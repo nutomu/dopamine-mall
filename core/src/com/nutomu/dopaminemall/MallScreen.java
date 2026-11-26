@@ -58,6 +58,15 @@ import java.util.List;
  *   階を上がったときは「Welcome to ○F!」の特別な放送。
  * - 演出：フロアアップ時のきらめき、攻撃・被弾時のフラッシュ、敵撃破時の
  *   パーティクル、プレイヤーを中心とした柔らかい光。視界ルールは変えない。
+ * ゲームパッド・Fire TV リモコンでの持ち物一覧操作。
+ * - コントローラー拡張は使わず、ゲームパッド・リモコンのボタンは Android の
+ *   キーコード（BUTTON_A／BUTTON_B／BUTTON_Y／BUTTON_START／DPAD_CENTER／
+ *   BACK など）として keyDown に届く方式。タイトル画面の BUTTON_A 開始と
+ *   同じ仕組みで、キー操作（Iキー・数字キー）と並行して使える。
+ * - Start／Y ボタンで一覧を開く。開いているときは十字キー上下で項目を移動し、
+ *   A／決定ボタンで使う・装備する、B／Back ボタンで閉じる。選んだ項目は
+ *   ハイライト表示される。開閉・項目移動だけではターンを消費しない。
+ * - Fire TV リモコンの Back ボタンがアプリに届くよう setCatchKey(BACK) する。
  */
 public class MallScreen implements Screen, InputProcessor {
     static final int TILE = 48;
@@ -101,6 +110,8 @@ public class MallScreen implements Screen, InputProcessor {
     private Item equippedWeapon = null;
     private Item equippedArmor = null;
     private boolean showInventory = false;
+    /** 持ち物一覧で現在選んでいる項目（ハイライト表示用）。 */
+    private int selectedItem = 0;
 
     /** ボスとモンスターハウス（M5）。 */
     private boolean isBossFloor = false;
@@ -147,6 +158,8 @@ public class MallScreen implements Screen, InputProcessor {
         music.load();
         music.playTitle();
         Gdx.input.setInputProcessor(this);
+        // Fire TV リモコンの Back ボタンを OS に取られずアプリで受け取る。
+        Gdx.input.setCatchKey(Input.Keys.BACK, true);
     }
 
     /** 新しい階のフロアを生成してプレイヤーと敵・アイテムを配置する。 */
@@ -602,6 +615,7 @@ public class MallScreen implements Screen, InputProcessor {
         equippedWeapon = null;
         equippedArmor = null;
         showInventory = false;
+        selectedItem = 0;
         loadFloor();
     }
 
@@ -610,28 +624,48 @@ public class MallScreen implements Screen, InputProcessor {
         // タイトル画面：Enterキーなどでゲーム開始する。
         if (titleScreen) {
             if (keycode == Input.Keys.ENTER || keycode == Input.Keys.CENTER
-                    || keycode == Input.Keys.BUTTON_A || keycode == Input.Keys.SPACE) {
+                    || keycode == Input.Keys.BUTTON_A || keycode == Input.Keys.SPACE
+                    || keycode == Input.Keys.BUTTON_START) {
                 startGame();
             }
             return true;
         }
         if (gameOver) {
-            if (keycode == Input.Keys.ENTER) {
+            if (keycode == Input.Keys.ENTER || keycode == Input.Keys.BUTTON_A
+                    || keycode == Input.Keys.DPAD_CENTER || keycode == Input.Keys.CENTER) {
                 restart();
                 return true;
             }
             return true;
         }
-        // 持ち物一覧が開いているときは、Iキーで閉じるか数字キーで選ぶだけ。
-        // それ以外のキー（移動など）は受け付けない。
+        // 持ち物一覧が開いているとき：開閉・項目移動はターンを消費しない。
+        // 数字キーでの直接選択も残す（キーボード操作）。
         if (showInventory) {
-            if (keycode == Input.Keys.I) {
+            if (keycode == Input.Keys.I || keycode == Input.Keys.BUTTON_B
+                    || keycode == Input.Keys.BACK || keycode == Input.Keys.ESCAPE
+                    || keycode == Input.Keys.BUTTON_START || keycode == Input.Keys.BUTTON_Y) {
                 showInventory = false;
+                return true;
+            }
+            if (keycode == Input.Keys.UP || keycode == Input.Keys.W) {
+                moveSelection(-1);
+                return true;
+            }
+            if (keycode == Input.Keys.DOWN || keycode == Input.Keys.S) {
+                moveSelection(1);
+                return true;
+            }
+            if (keycode == Input.Keys.BUTTON_A || keycode == Input.Keys.DPAD_CENTER
+                    || keycode == Input.Keys.CENTER || keycode == Input.Keys.ENTER) {
+                useItem(selectedItem);
+                clampSelectedItem();
                 return true;
             }
             int index = numberKeyIndex(keycode);
             if (index >= 0) {
+                selectedItem = index;
                 useItem(index);
+                clampSelectedItem();
             }
             return true;
         }
@@ -664,10 +698,30 @@ public class MallScreen implements Screen, InputProcessor {
                 message = music.isMuted() ? "Music: OFF" : "Music: ON";
                 return true;
             case Input.Keys.I:
+            case Input.Keys.BUTTON_START:
+            case Input.Keys.BUTTON_Y:
                 showInventory = true;
+                selectedItem = 0;
                 return true;
             default:
                 return false;
+        }
+    }
+
+    /** 持ち物一覧の選択項目を移動する（端で折り返す。空なら何もしない）。 */
+    private void moveSelection(int delta) {
+        if (inventory.isEmpty()) {
+            return;
+        }
+        selectedItem = (selectedItem + delta + inventory.size()) % inventory.size();
+    }
+
+    /** 選択項目が持ち物の範囲に収まるようにする（使って減ったあと用）。 */
+    private void clampSelectedItem() {
+        if (inventory.isEmpty()) {
+            selectedItem = 0;
+        } else if (selectedItem >= inventory.size()) {
+            selectedItem = inventory.size() - 1;
         }
     }
 
@@ -919,8 +973,8 @@ public class MallScreen implements Screen, InputProcessor {
         hudFont.setColor(Color.LIGHT_GRAY);
         hudFont.draw(batch, "Move: Arrow keys / WASD   [M] MAP   [I] ITEMS   [N] MUSIC",
                 cx - 300, cy - 110);
-        hudFont.draw(batch, "Gamepad / Fire TV remote: D-pad to move",
-                cx - 260, cy - 140);
+        hudFont.draw(batch, "Gamepad / Fire TV remote: D-pad to move, START items, A start",
+                cx - 300, cy - 140);
         batch.end();
     }
 
@@ -1016,7 +1070,7 @@ public class MallScreen implements Screen, InputProcessor {
                         + "   WPN " + (equippedWeapon != null ? equippedWeapon.kind.displayName : "-")
                         + "   ARM " + (equippedArmor != null ? equippedArmor.kind.displayName : "-"),
                 leftX + 12, topY - 50);
-        hudFont.draw(batch, "TURN " + turn + "   [M] MAP   [I] ITEMS   [N] MUSIC   [SPACE] WAIT",
+        hudFont.draw(batch, "TURN " + turn + "   [M] MAP   [I]/[START] ITEMS   [N] MUSIC   [SPACE] WAIT",
                 leftX + 12, topY - 78);
         if (!announcement.isEmpty()) {
             hudFont.setColor(Color.CYAN);
@@ -1045,6 +1099,12 @@ public class MallScreen implements Screen, InputProcessor {
         shapes.begin(ShapeRenderer.ShapeType.Filled);
         shapes.setColor(0f, 0f, 0f, 0.85f);
         shapes.rect(x0, y0 - panelH, panelW, panelH);
+        // 選んでいる項目のハイライト（項目行の背景を薄い黄色にする）。
+        if (!inventory.isEmpty()) {
+            float selBaseline = y0 - 26 - (3 + selectedItem) * lineH;
+            shapes.setColor(1f, 0.85f, 0.2f, 0.25f);
+            shapes.rect(x0 + 8, selBaseline - 21, panelW - 16, lineH);
+        }
         shapes.end();
         Gdx.gl.glDisable(GL20.GL_BLEND);
 
@@ -1065,7 +1125,7 @@ public class MallScreen implements Screen, InputProcessor {
                 x0 + 16, ty);
         ty -= lineH;
         hudFont.setColor(Color.LIGHT_GRAY);
-        hudFont.draw(batch, "Press 1-0 to use / equip.  Press [I] to close.",
+        hudFont.draw(batch, "D-pad: select  [A] use  [B] close  /  1-0: use  [I] close",
                 x0 + 16, ty);
         for (int i = 0; i < inventory.size(); i++) {
             ty -= lineH;
@@ -1078,10 +1138,17 @@ public class MallScreen implements Screen, InputProcessor {
             } else {
                 desc = "DEF +" + it.kind.defenseBonus;
             }
-            hudFont.setColor(Color.WHITE);
-            hudFont.draw(batch, (i + 1) % 10 + ". " + it.kind.symbol + " "
-                            + it.kind.displayName + "  -  " + desc,
-                    x0 + 16, ty);
+            if (i == selectedItem) {
+                hudFont.setColor(Color.YELLOW);
+                hudFont.draw(batch, "> " + (i + 1) % 10 + ". " + it.kind.symbol + " "
+                                + it.kind.displayName + "  -  " + desc,
+                        x0 + 16, ty);
+            } else {
+                hudFont.setColor(Color.WHITE);
+                hudFont.draw(batch, "  " + (i + 1) % 10 + ". " + it.kind.symbol + " "
+                                + it.kind.displayName + "  -  " + desc,
+                        x0 + 16, ty);
+            }
         }
         if (inventory.isEmpty()) {
             ty -= lineH;
