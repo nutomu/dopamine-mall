@@ -39,6 +39,14 @@ import java.util.List;
  * - Iキーで持ち物一覧（オーバーレイ表示）。数字キー（1〜0）で選んで使う／装備する。
  *   武器・防具は1つずつ装備でき、交換時は古い装備が持ち物に戻る。
  * - 使う・装備する・拾う操作は1ターン消費する。一覧の開閉だけでは消費しない。
+ * M5：階層テーマとボスのテスト実装。
+ * - 階数で敵の顔ぶれが変わる。1〜4階は下層（客・店員・警備員）、5〜9階は着ぐるみと
+ *   動物、10〜14階はUMA、15階以上は天使や神話の存在。HUD に階層テーマ名を表示する。
+ * - ボスフロア（5階ごと）：その階層を代表するボス1体（5F 店長／10F 巨大着ぐるみ／
+ *   15F〜 大天使）。HPは通常敵の約5倍、攻撃は約1.5倍。倒すと良いアイテムを落とす。
+ *   倒さなくても階段で次の階へ進める。ボスは金色で大きく表示し、記号 'B'。
+ * - モンスターハウス：フロアごとに10%の確率で、ランダムな場所に敵6〜10体を詰め込む。
+ *   入るとメッセージで知らせる。中の敵は視界ルール通り、入るまで見えない。
  * ※ グラフィックスは色分けしたタイルのシンプルな表示（凝った表現は M6 で行う）。
  * ※ HUD の文字はデフォルトフォントが ASCII のみのため英字表記。
  */
@@ -85,6 +93,10 @@ public class MallScreen implements Screen, InputProcessor {
     private Item equippedArmor = null;
     private boolean showInventory = false;
 
+    /** ボスとモンスターハウス（M5）。 */
+    private boolean isBossFloor = false;
+    private boolean monsterHouseAnnounced = false;
+
     public MallScreen(DopamineMallGame game) {
         this.game = game;
     }
@@ -110,6 +122,8 @@ public class MallScreen implements Screen, InputProcessor {
         playerY = floor.startY;
         enemies = FloorGenerator.spawnEnemies(floor, floorNumber);
         items = FloorGenerator.spawnItems(floor, floorNumber, enemies);
+        isBossFloor = floorNumber % 5 == 0;
+        monsterHouseAnnounced = false;
         updateVisibility();
     }
 
@@ -204,7 +218,16 @@ public class MallScreen implements Screen, InputProcessor {
                 message = "Attacked " + target.kind.name() + " for " + damage + " dmg!";
             } else {
                 enemies.remove(target);
-                message = "Defeated " + target.kind.name() + "!";
+                if (target.isBoss) {
+                    // ボスを倒すと良いアイテムをその場に落とす。
+                    Item.Kind[] loot = {Item.Kind.FRYING_PAN, Item.Kind.JACKET, Item.Kind.SWEETS};
+                    Item.Kind drop = loot[(int) (Math.random() * loot.length)];
+                    items.add(new Item(drop, target.x, target.y));
+                    message = "Defeated BOSS " + target.kind.name() + "! It dropped "
+                            + drop.displayName + "!";
+                } else {
+                    message = "Defeated " + target.kind.name() + "!";
+                }
             }
             turn++;
             enemyTurn();
@@ -222,10 +245,28 @@ public class MallScreen implements Screen, InputProcessor {
             return;
         }
         enemyTurn();
+        if (!gameOver) {
+            checkMonsterHouseEntry();
+        }
         Floor.Tile t = floor.tiles[nx][ny];
         if (t == Floor.Tile.ESCALATOR || t == Floor.Tile.STAIRS) {
             floorNumber++;
             loadFloor();
+        }
+    }
+
+    /**
+     * モンスターハウスに入ったかどうかを調べる。初めて入ったときにだけ
+     * メッセージで知らせる（中の敵は視界ルール通り、入るまで見えない）。
+     */
+    private void checkMonsterHouseEntry() {
+        if (!floor.hasMonsterHouse || monsterHouseAnnounced) {
+            return;
+        }
+        if (playerX >= floor.mhX0 && playerX <= floor.mhX1
+                && playerY >= floor.mhY0 && playerY <= floor.mhY1) {
+            monsterHouseAnnounced = true;
+            message = "Monster house! Enemies everywhere!";
         }
     }
 
@@ -550,13 +591,18 @@ public class MallScreen implements Screen, InputProcessor {
             shapes.setColor(it.kind.r, it.kind.g, it.kind.b, 1f);
             shapes.circle(it.x * TILE + TILE / 2f, it.y * TILE + TILE / 2f, TILE * 0.22f);
         }
-        // 敵（行った場所にいる敵だけ表示する）
+        // 敵（行った場所にいる敵だけ表示する。ボスは金色で大きく表示する）
         for (Enemy e : enemies) {
             if (!floor.visited[e.x][e.y]) {
                 continue;
             }
-            shapes.setColor(e.kind.r, e.kind.g, e.kind.b, 1f);
-            shapes.circle(e.x * TILE + TILE / 2f, e.y * TILE + TILE / 2f, TILE * 0.30f);
+            if (e.isBoss) {
+                shapes.setColor(1f, 0.85f, 0.2f, 1f);
+                shapes.circle(e.x * TILE + TILE / 2f, e.y * TILE + TILE / 2f, TILE * 0.38f);
+            } else {
+                shapes.setColor(e.kind.r, e.kind.g, e.kind.b, 1f);
+                shapes.circle(e.x * TILE + TILE / 2f, e.y * TILE + TILE / 2f, TILE * 0.30f);
+            }
         }
         // プレイヤー（黄色い円）
         shapes.setColor(1f, 0.8f, 0.2f, 1f);
@@ -680,7 +726,9 @@ public class MallScreen implements Screen, InputProcessor {
         batch.setProjectionMatrix(camera.combined);
         batch.begin();
         hudFont.setColor(Color.WHITE);
-        hudFont.draw(batch, "DOPAMINE MALL  " + floorNumber + "F  -  " + floor.type.displayName,
+        String bossMark = isBossFloor ? "  !! BOSS FLOOR !!" : "";
+        hudFont.draw(batch, "DOPAMINE MALL  " + floorNumber + "F  -  " + floor.type.displayName
+                        + "  [" + Enemy.themeName(floorNumber) + "]" + bossMark,
                 leftX + 12, topY - 22);
         hudFont.draw(batch, "HP " + playerHp + "/" + PLAYER_MAX_HP
                         + "   ATK " + playerAttack() + "   DEF " + playerDefense()
@@ -821,7 +869,11 @@ public class MallScreen implements Screen, InputProcessor {
             if (!floor.visited[e.x][e.y]) {
                 continue;
             }
-            shapes.setColor(1f, 0.25f, 0.25f, 1f);
+            if (e.isBoss) {
+                shapes.setColor(1f, 0.85f, 0.2f, 1f);
+            } else {
+                shapes.setColor(1f, 0.25f, 0.25f, 1f);
+            }
             shapes.rect(ox + e.x * cell - 1, oy + e.y * cell - 1, cell + 1, cell + 1);
         }
         shapes.end();

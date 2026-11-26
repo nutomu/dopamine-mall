@@ -24,6 +24,9 @@ public class Floor {
     public int startY;
     public int escX, escY;
     public int stairX, stairY;
+    /** モンスターハウス（M5）：ある場合、敵が詰まった部屋の範囲。 */
+    public boolean hasMonsterHouse = false;
+    public int mhX0, mhY0, mhX1, mhY1;
 
     public Floor(FloorType type, int w, int h) {
         this.type = type;

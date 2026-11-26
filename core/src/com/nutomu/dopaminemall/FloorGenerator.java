@@ -351,18 +351,50 @@ public class FloorGenerator {
     }
 
     // ---- 敵の配置（M3）：スタート地点の近く（3マス以内）には配置しない ----
+    // M5：ボスフロア（5階ごと）にボス1体、フロアごとに10%でモンスターハウスを追加。
 
     /**
      * フロアに敵を配置する。数は階数に応じて増やす（1階で4〜6体）。
      * スタート地点の近く（3マス以内）や階段の上には配置しない。
+     * ボスフロア（5階ごと）にはその階層を代表するボスを1体追加する。
+     * 10%の確率でモンスターハウス（ランダムな場所に敵6〜10体）を作る。
      */
     public static List<Enemy> spawnEnemies(Floor floor, int floorNumber) {
         Random random = new Random();
         List<Enemy> enemies = new ArrayList<Enemy>();
+        // モンスターハウスを先に決める（通常の敵がその範囲に入らないようにするため）。
+        // 10%の確率で、ランダムな場所に敵6〜10体を詰め込む。
+        if (random.nextDouble() < 0.10) {
+            spawnMonsterHouse(floor, floorNumber, enemies, random);
+        }
+        int houseCount = enemies.size();
         int count = 4 + (floorNumber - 1) + random.nextInt(3);
         int tries = 0;
-        while (enemies.size() < count && tries < 500) {
+        while (enemies.size() < houseCount + count && tries < 500) {
             tries++;
+            int[] pos = randomFreeTile(floor, enemies, random);
+            if (pos == null) {
+                break;
+            }
+            enemies.add(new Enemy(Enemy.pickKind(floorNumber, random), pos[0], pos[1], floorNumber));
+        }
+        // ボスフロア：その階層を代表するボスを1体配置する。
+        if (floorNumber % 5 == 0) {
+            int[] pos = randomFreeTile(floor, enemies, random);
+            if (pos != null) {
+                enemies.add(new Enemy(Enemy.bossKind(floorNumber), pos[0], pos[1], floorNumber, true));
+            }
+        }
+        return enemies;
+    }
+
+    /**
+     * 配置条件を満たすランダムな歩行可能タイルを1つ選ぶ。
+     * スタート地点の近く（3マス以内）・階段の上・他の敵の位置・
+     * モンスターハウスの範囲は避ける。見つからなければ null。
+     */
+    private static int[] randomFreeTile(Floor floor, List<Enemy> enemies, Random random) {
+        for (int tries = 0; tries < 100; tries++) {
             int x = 1 + random.nextInt(floor.w - 2);
             int y = 1 + random.nextInt(floor.h - 2);
             if (!floor.isWalkable(x, y)) {
@@ -372,6 +404,10 @@ public class FloorGenerator {
                 continue;
             }
             if ((x == floor.escX && y == floor.escY) || (x == floor.stairX && y == floor.stairY)) {
+                continue;
+            }
+            if (floor.hasMonsterHouse && x >= floor.mhX0 && x <= floor.mhX1
+                    && y >= floor.mhY0 && y <= floor.mhY1) {
                 continue;
             }
             boolean occupied = false;
@@ -384,9 +420,59 @@ public class FloorGenerator {
             if (occupied) {
                 continue;
             }
-            enemies.add(new Enemy(Enemy.pickKind(floorNumber, random), x, y, floorNumber));
+            return new int[]{x, y};
         }
-        return enemies;
+        return null;
+    }
+
+    /** モンスターハウスを作る。ランダムな場所を中心に5x5〜7x7の範囲を決め、敵を詰め込む。 */
+    private static void spawnMonsterHouse(Floor floor, int floorNumber,
+                                          List<Enemy> enemies, Random random) {
+        int cx = 1 + random.nextInt(floor.w - 2);
+        int cy = 1 + random.nextInt(floor.h - 2);
+        int hw = 2 + random.nextInt(2); // 半幅2〜3（5x5〜7x7）
+        int hh = 2 + random.nextInt(2);
+        int x0 = Math.max(1, cx - hw);
+        int x1 = Math.min(floor.w - 2, cx + hw);
+        int y0 = Math.max(1, cy - hh);
+        int y1 = Math.min(floor.h - 2, cy + hh);
+        List<int[]> tiles = new ArrayList<int[]>();
+        for (int x = x0; x <= x1; x++) {
+            for (int y = y0; y <= y1; y++) {
+                if (!floor.isWalkable(x, y)) {
+                    continue;
+                }
+                if (Math.abs(x - floor.startX) + Math.abs(y - floor.startY) <= 3) {
+                    continue;
+                }
+                if ((x == floor.escX && y == floor.escY) || (x == floor.stairX && y == floor.stairY)) {
+                    continue;
+                }
+                boolean occupied = false;
+                for (Enemy e : enemies) {
+                    if (e.x == x && e.y == y) {
+                        occupied = true;
+                        break;
+                    }
+                }
+                if (!occupied) {
+                    tiles.add(new int[]{x, y});
+                }
+            }
+        }
+        if (tiles.size() < 3) {
+            return;
+        }
+        int count = Math.min(tiles.size(), 6 + random.nextInt(5));
+        for (int i = 0; i < count; i++) {
+            int[] pos = tiles.remove(random.nextInt(tiles.size()));
+            enemies.add(new Enemy(Enemy.pickKind(floorNumber, random), pos[0], pos[1], floorNumber));
+        }
+        floor.hasMonsterHouse = true;
+        floor.mhX0 = x0;
+        floor.mhY0 = y0;
+        floor.mhX1 = x1;
+        floor.mhY1 = y1;
     }
 
     // ---- アイテムの配置（M4）：スタート地点の近く（3マス以内）や階段の上には配置しない ----
