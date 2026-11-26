@@ -14,6 +14,9 @@ import com.badlogic.gdx.math.Vector3;
 import com.badlogic.gdx.utils.viewport.FitViewport;
 import com.badlogic.gdx.utils.viewport.Viewport;
 
+import java.util.ArrayList;
+import java.util.List;
+
 /**
  * M2：ダンジョン生成とターン制移動のテスト実装。
  * - 5種類のフロアタイプに応じたランダム生成（40x30タイル程度）。
@@ -24,6 +27,12 @@ import com.badlogic.gdx.utils.viewport.Viewport;
  * - 階段：エスカレーター（緑）と非常階段（青）の2か所。乗ると次の階へ。
  * - 操作：矢印キー／WASD、タップ移動。ゲームパッド・Fire TVリモコンの十字キーは
  *   Android側で矢印キーとして届くため特別な対応は不要。
+ * M3：敵と戦闘のテスト実装。
+ * - 敵は下層の3種類：客（弱い・数が多い）、店員（普通・追う）、警備員（強い・たまに出現）。
+ * - 戦闘はぶつかり攻撃。ダメージ＝攻撃力−防御力、最低1。
+ * - 敵AI：プレイヤーが5マス以内にいると近づく。それ以外はランダムにうろつく。
+ * - プレイヤーのHPが0になるとゲームオーバー。Enterキーで最初からリスタート。
+ * ※ グラフィックスは色分けしたタイルのシンプルな表示（凝った表現は M6 で行う）。
  * ※ グラフィックスは色分けしたタイルのシンプルな表示（凝った表現は M6 で行う）。
  * ※ HUD の文字はデフォルトフォントが ASCII のみのため英字表記。
  */
@@ -49,6 +58,19 @@ public class MallScreen implements Screen, InputProcessor {
     private int turn = 0;
     private boolean showMinimap = false;
 
+    /** プレイヤーのステータス（M3）。 */
+    private static final int PLAYER_MAX_HP = 50;
+    private static final int PLAYER_ATTACK = 6;
+    private static final int PLAYER_DEFENSE = 0;
+    private int playerHp = PLAYER_MAX_HP;
+    /** 敵がプレイヤーを追い始める距離（マンハッタン距離）。 */
+    private static final int CHASE_RANGE = 5;
+
+    private List<Enemy> enemies = new ArrayList<Enemy>();
+    private boolean gameOver = false;
+    /** HUD 付近に表示する1行メッセージ（攻撃した／されたときなど）。 */
+    private String message = "";
+
     public MallScreen(DopamineMallGame game) {
         this.game = game;
     }
@@ -67,12 +89,23 @@ public class MallScreen implements Screen, InputProcessor {
         Gdx.input.setInputProcessor(this);
     }
 
-    /** 新しい階のフロアを生成してプレイヤーを配置する。 */
+    /** 新しい階のフロアを生成してプレイヤーと敵を配置する。 */
     private void loadFloor() {
         floor = FloorGenerator.generate(floorNumber);
         playerX = floor.startX;
         playerY = floor.startY;
+        enemies = FloorGenerator.spawnEnemies(floor, floorNumber);
         updateVisibility();
+    }
+
+    /** 指定したタイルにいる敵を返す。いなければ null。 */
+    private Enemy enemyAt(int x, int y) {
+        for (Enemy e : enemies) {
+            if (e.x == x && e.y == y) {
+                return e;
+            }
+        }
+        return null;
     }
 
     /**
@@ -119,9 +152,29 @@ public class MallScreen implements Screen, InputProcessor {
         camera.update();
     }
 
+    /**
+     * 移動を試みる。移動先に敵がいたらぶつかり攻撃をする。
+     * プレイヤーの行動のあと、敵が1回ずつ行動する（ターン制）。
+     */
     private void tryMove(int dx, int dy) {
+        if (gameOver) {
+            return;
+        }
         int nx = playerX + dx;
         int ny = playerY + dy;
+        Enemy target = enemyAt(nx, ny);
+        if (target != null) {
+            int damage = target.takeDamage(PLAYER_ATTACK);
+            if (target.isAlive()) {
+                message = "Attacked " + target.kind.name() + " for " + damage + " dmg!";
+            } else {
+                enemies.remove(target);
+                message = "Defeated " + target.kind.name() + "!";
+            }
+            turn++;
+            enemyTurn();
+            return;
+        }
         if (!floor.isWalkable(nx, ny)) {
             return;
         }
@@ -129,6 +182,7 @@ public class MallScreen implements Screen, InputProcessor {
         playerY = ny;
         turn++;
         updateVisibility();
+        enemyTurn();
         Floor.Tile t = floor.tiles[nx][ny];
         if (t == Floor.Tile.ESCALATOR || t == Floor.Tile.STAIRS) {
             floorNumber++;
@@ -137,11 +191,113 @@ public class MallScreen implements Screen, InputProcessor {
     }
 
     private void waitTurn() {
+        if (gameOver) {
+            return;
+        }
         turn++;
+        enemyTurn();
+    }
+
+    /**
+     * 敵のターン。敵はプレイヤーの1ターンごとに1回行動する。
+     * - プレイヤーに隣接していたら攻撃する。
+     * - プレイヤーが5マス以内にいるとプレイヤーに向かって1マス近づく。
+     * - それ以外はランダムな方向に1マスうろつく（壁や他の敵の方向には動かない）。
+     */
+    private void enemyTurn() {
+        if (gameOver) {
+            return;
+        }
+        List<Enemy> acting = new ArrayList<Enemy>(enemies);
+        for (Enemy e : acting) {
+            if (!enemies.contains(e)) {
+                continue;
+            }
+            int dist = Math.abs(e.x - playerX) + Math.abs(e.y - playerY);
+            if (dist == 1) {
+                int damage = Math.max(1, e.attack - PLAYER_DEFENSE);
+                playerHp -= damage;
+                message = e.kind.name() + " hit you for " + damage + " dmg!";
+                if (playerHp <= 0) {
+                    playerHp = 0;
+                    gameOver = true;
+                    message = "GAME OVER...";
+                }
+                continue;
+            }
+            int dx = 0;
+            int dy = 0;
+            if (dist <= CHASE_RANGE) {
+                // プレイヤーに近づく：差の大きい軸を優先する
+                int gx = Integer.compare(playerX, e.x);
+                int gy = Integer.compare(playerY, e.y);
+                if (Math.abs(playerX - e.x) >= Math.abs(playerY - e.y)) {
+                    dx = gx;
+                    dy = 0;
+                } else {
+                    dx = 0;
+                    dy = gy;
+                }
+                if (!canEnemyMoveTo(e, e.x + dx, e.y + dy)) {
+                    // 優先方向に進めなければもう一方の軸を試す
+                    dx = 0;
+                    dy = 0;
+                    if (gx != 0 && canEnemyMoveTo(e, e.x + gx, e.y)) {
+                        dx = gx;
+                    } else if (gy != 0 && canEnemyMoveTo(e, e.x, e.y + gy)) {
+                        dy = gy;
+                    }
+                }
+            } else {
+                // うろつく：ランダムな4方向のうち進める方向を1つ選ぶ
+                int[][] dirs = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
+                int start = (int) (Math.random() * dirs.length);
+                for (int i = 0; i < dirs.length; i++) {
+                    int[] d = dirs[(start + i) % dirs.length];
+                    if (canEnemyMoveTo(e, e.x + d[0], e.y + d[1])) {
+                        dx = d[0];
+                        dy = d[1];
+                        break;
+                    }
+                }
+            }
+            if ((dx != 0 || dy != 0) && canEnemyMoveTo(e, e.x + dx, e.y + dy)) {
+                e.x += dx;
+                e.y += dy;
+            }
+        }
+    }
+
+    /** 敵がそのタイルに移動できるか（歩行可能・他の敵なし・プレイヤーの位置でない）。 */
+    private boolean canEnemyMoveTo(Enemy self, int x, int y) {
+        if (!floor.isWalkable(x, y)) {
+            return false;
+        }
+        if (x == playerX && y == playerY) {
+            return false;
+        }
+        return enemyAt(x, y) == null;
+    }
+
+    /** ゲームオーバーからのリスタート。最初からやり直す。 */
+    private void restart() {
+        floorNumber = 1;
+        turn = 0;
+        playerHp = PLAYER_MAX_HP;
+        gameOver = false;
+        message = "";
+        loadFloor();
     }
 
     @Override
     public boolean keyDown(int keycode) {
+        if (gameOver) {
+            if (keycode == Input.Keys.ENTER) {
+                restart();
+                return true;
+            }
+            return true;
+        }
         switch (keycode) {
             case Input.Keys.UP:
             case Input.Keys.W:
@@ -173,6 +329,9 @@ public class MallScreen implements Screen, InputProcessor {
 
     @Override
     public boolean touchDown(int screenX, int screenY, int pointer, int button) {
+        if (gameOver) {
+            return true;
+        }
         // タップした方向へ1マス進む（斜めは横方向を優先）
         Vector3 v = new Vector3(screenX, screenY, 0);
         viewport.unproject(v);
@@ -243,6 +402,14 @@ public class MallScreen implements Screen, InputProcessor {
                 drawTile(x, y);
             }
         }
+        // 敵（行った場所にいる敵だけ表示する）
+        for (Enemy e : enemies) {
+            if (!floor.visited[e.x][e.y]) {
+                continue;
+            }
+            shapes.setColor(e.kind.r, e.kind.g, e.kind.b, 1f);
+            shapes.circle(e.x * TILE + TILE / 2f, e.y * TILE + TILE / 2f, TILE * 0.30f);
+        }
         // プレイヤー（黄色い円）
         shapes.setColor(1f, 0.8f, 0.2f, 1f);
         shapes.circle(playerX * TILE + TILE / 2f, playerY * TILE + TILE / 2f, TILE * 0.32f);
@@ -250,6 +417,14 @@ public class MallScreen implements Screen, InputProcessor {
 
         batch.setProjectionMatrix(camera.combined);
         batch.begin();
+        for (Enemy e : enemies) {
+            if (!floor.visited[e.x][e.y]) {
+                continue;
+            }
+            font.setColor(Color.BLACK);
+            font.draw(batch, String.valueOf(e.kind.symbol),
+                    e.x * TILE + TILE / 2f - 11, e.y * TILE + TILE / 2f + 14);
+        }
         font.setColor(Color.BLACK);
         font.draw(batch, "@", playerX * TILE + TILE / 2f - 13, playerY * TILE + TILE / 2f + 15);
         batch.end();
@@ -257,6 +432,9 @@ public class MallScreen implements Screen, InputProcessor {
         drawHud();
         if (showMinimap) {
             drawMinimap();
+        }
+        if (gameOver) {
+            drawGameOver();
         }
     }
 
@@ -328,7 +506,7 @@ public class MallScreen implements Screen, InputProcessor {
         }
     }
 
-    /** HUD：階数とフロアタイプ名、ターン数、キー案内。 */
+    /** HUD：階数とフロアタイプ名、HP・ターン数、キー案内、メッセージ。 */
     private void drawHud() {
         float topY = camera.position.y + VIEW_H / 2f;
         float leftX = camera.position.x - VIEW_W / 2f;
@@ -336,7 +514,7 @@ public class MallScreen implements Screen, InputProcessor {
         Gdx.gl.glBlendFunc(GL20.GL_SRC_ALPHA, GL20.GL_ONE_MINUS_SRC_ALPHA);
         shapes.begin(ShapeRenderer.ShapeType.Filled);
         shapes.setColor(0f, 0f, 0f, 0.55f);
-        shapes.rect(leftX, topY - 64, VIEW_W, 64);
+        shapes.rect(leftX, topY - 92, VIEW_W, 92);
         shapes.end();
         Gdx.gl.glDisable(GL20.GL_BLEND);
 
@@ -345,8 +523,36 @@ public class MallScreen implements Screen, InputProcessor {
         hudFont.setColor(Color.WHITE);
         hudFont.draw(batch, "DOPAMINE MALL  " + floorNumber + "F  -  " + floor.type.displayName,
                 leftX + 12, topY - 22);
-        hudFont.draw(batch, "TURN " + turn + "   [M] MAP   [SPACE] WAIT",
+        hudFont.draw(batch, "HP " + playerHp + "/" + PLAYER_MAX_HP + "   TURN " + turn
+                        + "   [M] MAP   [SPACE] WAIT",
                 leftX + 12, topY - 50);
+        if (!message.isEmpty()) {
+            hudFont.setColor(Color.YELLOW);
+            hudFont.draw(batch, message, leftX + 12, topY - 78);
+        }
+        batch.end();
+    }
+
+    /** ゲームオーバー画面。Enterキーで最初からリスタート。 */
+    private void drawGameOver() {
+        float cx = camera.position.x;
+        float cy = camera.position.y;
+        Gdx.gl.glEnable(GL20.GL_BLEND);
+        Gdx.gl.glBlendFunc(GL20.GL_SRC_ALPHA, GL20.GL_ONE_MINUS_SRC_ALPHA);
+        shapes.begin(ShapeRenderer.ShapeType.Filled);
+        shapes.setColor(0f, 0f, 0f, 0.7f);
+        shapes.rect(cx - VIEW_W / 2f, cy - VIEW_H / 2f, VIEW_W, VIEW_H);
+        shapes.end();
+        Gdx.gl.glDisable(GL20.GL_BLEND);
+
+        batch.setProjectionMatrix(camera.combined);
+        batch.begin();
+        font.setColor(Color.RED);
+        font.draw(batch, "GAME OVER", cx - 130, cy + 40);
+        hudFont.setColor(Color.WHITE);
+        hudFont.draw(batch, "You reached " + floorNumber + "F  /  TURN " + turn,
+                cx - 170, cy - 10);
+        hudFont.draw(batch, "PRESS ENTER TO RETRY", cx - 170, cy - 50);
         batch.end();
     }
 
@@ -357,7 +563,7 @@ public class MallScreen implements Screen, InputProcessor {
         float mapH = floor.h * cell;
         float topY = camera.position.y + VIEW_H / 2f;
         float ox = camera.position.x + VIEW_W / 2f - mapW - 12;
-        float oy = topY - 64 - mapH - 12;
+        float oy = topY - 92 - mapH - 12;
 
         Gdx.gl.glEnable(GL20.GL_BLEND);
         Gdx.gl.glBlendFunc(GL20.GL_SRC_ALPHA, GL20.GL_ONE_MINUS_SRC_ALPHA);
@@ -386,6 +592,13 @@ public class MallScreen implements Screen, InputProcessor {
         }
         shapes.setColor(1f, 0.8f, 0.2f, 1f);
         shapes.rect(ox + playerX * cell - 1, oy + playerY * cell - 1, cell + 2, cell + 2);
+        for (Enemy e : enemies) {
+            if (!floor.visited[e.x][e.y]) {
+                continue;
+            }
+            shapes.setColor(1f, 0.25f, 0.25f, 1f);
+            shapes.rect(ox + e.x * cell - 1, oy + e.y * cell - 1, cell + 1, cell + 1);
+        }
         shapes.end();
         Gdx.gl.glDisable(GL20.GL_BLEND);
     }

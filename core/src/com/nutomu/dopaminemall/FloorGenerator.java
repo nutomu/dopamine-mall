@@ -350,7 +350,44 @@ public class FloorGenerator {
         return f;
     }
 
-    // ---- 階段配置：スタートから歩いて到達できる、遠い場所に置く ----
+    // ---- 敵の配置（M3）：スタート地点の近く（3マス以内）には配置しない ----
+
+    /**
+     * フロアに敵を配置する。数は階数に応じて増やす（1階で4〜6体）。
+     * スタート地点の近く（3マス以内）や階段の上には配置しない。
+     */
+    public static List<Enemy> spawnEnemies(Floor floor, int floorNumber) {
+        Random random = new Random();
+        List<Enemy> enemies = new ArrayList<Enemy>();
+        int count = 4 + (floorNumber - 1) + random.nextInt(3);
+        int tries = 0;
+        while (enemies.size() < count && tries < 500) {
+            tries++;
+            int x = 1 + random.nextInt(floor.w - 2);
+            int y = 1 + random.nextInt(floor.h - 2);
+            if (!floor.isWalkable(x, y)) {
+                continue;
+            }
+            if (Math.abs(x - floor.startX) + Math.abs(y - floor.startY) <= 3) {
+                continue;
+            }
+            if ((x == floor.escX && y == floor.escY) || (x == floor.stairX && y == floor.stairY)) {
+                continue;
+            }
+            boolean occupied = false;
+            for (Enemy e : enemies) {
+                if (e.x == x && e.y == y) {
+                    occupied = true;
+                    break;
+                }
+            }
+            if (occupied) {
+                continue;
+            }
+            enemies.add(new Enemy(Enemy.pickKind(floorNumber, random), x, y, floorNumber));
+        }
+        return enemies;
+    }
 
     private static void placeStairs(Floor f, Random random) {
         int[][] dist = f.distancesFrom(f.startX, f.startY);
