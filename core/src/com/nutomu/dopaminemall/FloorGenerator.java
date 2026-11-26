@@ -389,6 +389,55 @@ public class FloorGenerator {
         return enemies;
     }
 
+    // ---- アイテムの配置（M4）：スタート地点の近く（3マス以内）や階段の上には配置しない ----
+
+    /**
+     * フロアにアイテムを配置する。数は階数に応じて増やす（1階で4〜6個）。
+     * スタート地点の近く（3マス以内）や階段の上には配置しない。
+     * アイテム同士・敵との重なりなし。
+     */
+    public static List<Item> spawnItems(Floor floor, int floorNumber, List<Enemy> enemies) {
+        Random random = new Random();
+        List<Item> items = new ArrayList<Item>();
+        int count = 4 + (floorNumber - 1) + random.nextInt(3);
+        int tries = 0;
+        while (items.size() < count && tries < 500) {
+            tries++;
+            int x = 1 + random.nextInt(floor.w - 2);
+            int y = 1 + random.nextInt(floor.h - 2);
+            if (!floor.isWalkable(x, y)) {
+                continue;
+            }
+            if (Math.abs(x - floor.startX) + Math.abs(y - floor.startY) <= 3) {
+                continue;
+            }
+            if ((x == floor.escX && y == floor.escY) || (x == floor.stairX && y == floor.stairY)) {
+                continue;
+            }
+            boolean occupied = false;
+            for (Enemy e : enemies) {
+                if (e.x == x && e.y == y) {
+                    occupied = true;
+                    break;
+                }
+            }
+            if (occupied) {
+                continue;
+            }
+            for (Item it : items) {
+                if (it.x == x && it.y == y) {
+                    occupied = true;
+                    break;
+                }
+            }
+            if (occupied) {
+                continue;
+            }
+            items.add(new Item(Item.pickKind(random), x, y));
+        }
+        return items;
+    }
+
     private static void placeStairs(Floor f, Random random) {
         int[][] dist = f.distancesFrom(f.startX, f.startY);
         int maxDist = 0;

@@ -32,7 +32,13 @@ import java.util.List;
  * - 戦闘はぶつかり攻撃。ダメージ＝攻撃力−防御力、最低1。
  * - 敵AI：プレイヤーが5マス以内にいると近づく。それ以外はランダムにうろつく。
  * - プレイヤーのHPが0になるとゲームオーバー。Enterキーで最初からリスタート。
- * ※ グラフィックスは色分けしたタイルのシンプルな表示（凝った表現は M6 で行う）。
+ * M4：アイテムと装備のテスト実装。
+ * - 3系統：回復（ドリンク／おにぎり／スイーツ）、武器（傘／フライパン）、
+ *   防具（エプロン／ジャケット）。フロアに数個ランダム配置。
+ * - アイテムのあるマスに移動すると自動で拾う。持ち物は最大10個。
+ * - Iキーで持ち物一覧（オーバーレイ表示）。数字キー（1〜0）で選んで使う／装備する。
+ *   武器・防具は1つずつ装備でき、交換時は古い装備が持ち物に戻る。
+ * - 使う・装備する・拾う操作は1ターン消費する。一覧の開閉だけでは消費しない。
  * ※ グラフィックスは色分けしたタイルのシンプルな表示（凝った表現は M6 で行う）。
  * ※ HUD の文字はデフォルトフォントが ASCII のみのため英字表記。
  */
@@ -71,6 +77,14 @@ public class MallScreen implements Screen, InputProcessor {
     /** HUD 付近に表示する1行メッセージ（攻撃した／されたときなど）。 */
     private String message = "";
 
+    /** アイテム（M4）。 */
+    private static final int MAX_INVENTORY = 10;
+    private List<Item> items = new ArrayList<Item>();
+    private List<Item> inventory = new ArrayList<Item>();
+    private Item equippedWeapon = null;
+    private Item equippedArmor = null;
+    private boolean showInventory = false;
+
     public MallScreen(DopamineMallGame game) {
         this.game = game;
     }
@@ -89,13 +103,34 @@ public class MallScreen implements Screen, InputProcessor {
         Gdx.input.setInputProcessor(this);
     }
 
-    /** 新しい階のフロアを生成してプレイヤーと敵を配置する。 */
+    /** 新しい階のフロアを生成してプレイヤーと敵・アイテムを配置する。 */
     private void loadFloor() {
         floor = FloorGenerator.generate(floorNumber);
         playerX = floor.startX;
         playerY = floor.startY;
         enemies = FloorGenerator.spawnEnemies(floor, floorNumber);
+        items = FloorGenerator.spawnItems(floor, floorNumber, enemies);
         updateVisibility();
+    }
+
+    /** プレイヤーの攻撃力（素手の攻撃力＋装備中の武器のボーナス）。 */
+    private int playerAttack() {
+        return PLAYER_ATTACK + (equippedWeapon != null ? equippedWeapon.kind.attackBonus : 0);
+    }
+
+    /** プレイヤーの防御力（素の防御力＋装備中の防具のボーナス）。 */
+    private int playerDefense() {
+        return PLAYER_DEFENSE + (equippedArmor != null ? equippedArmor.kind.defenseBonus : 0);
+    }
+
+    /** 指定したタイルにあるアイテムを返す。なければ null。 */
+    private Item itemAt(int x, int y) {
+        for (Item it : items) {
+            if (it.x == x && it.y == y) {
+                return it;
+            }
+        }
+        return null;
     }
 
     /** 指定したタイルにいる敵を返す。いなければ null。 */
@@ -164,7 +199,7 @@ public class MallScreen implements Screen, InputProcessor {
         int ny = playerY + dy;
         Enemy target = enemyAt(nx, ny);
         if (target != null) {
-            int damage = target.takeDamage(PLAYER_ATTACK);
+            int damage = target.takeDamage(playerAttack());
             if (target.isAlive()) {
                 message = "Attacked " + target.kind.name() + " for " + damage + " dmg!";
             } else {
@@ -182,12 +217,76 @@ public class MallScreen implements Screen, InputProcessor {
         playerY = ny;
         turn++;
         updateVisibility();
+        pickUpItem();
+        if (gameOver) {
+            return;
+        }
         enemyTurn();
         Floor.Tile t = floor.tiles[nx][ny];
         if (t == Floor.Tile.ESCALATOR || t == Floor.Tile.STAIRS) {
             floorNumber++;
             loadFloor();
         }
+    }
+
+    /**
+     * 今いるマスにアイテムがあれば拾う（移動の一部として1ターンを消費済み）。
+     * 持ち物がいっぱいのときは拾わず、その場に残してメッセージで知らせる。
+     */
+    private void pickUpItem() {
+        Item it = itemAt(playerX, playerY);
+        if (it == null) {
+            return;
+        }
+        if (inventory.size() >= MAX_INVENTORY) {
+            message = "Inventory is full! Cannot pick up " + it.kind.displayName + ".";
+            return;
+        }
+        items.remove(it);
+        inventory.add(it);
+        message = "Picked up " + it.kind.displayName + "!";
+    }
+
+    /**
+     * 持ち物一覧で選んだアイテムを使う／装備する。1ターン消費する。
+     * 回復アイテムなら使ってHPを回復する。武器・防具なら装備する。
+     * 装備中のものと交換する場合は古い装備が持ち物に戻る。
+     * 持ち物がいっぱいで交換できない場合は何もしない（ターンも消費しない）。
+     */
+    private void useItem(int index) {
+        if (gameOver || index < 0 || index >= inventory.size()) {
+            return;
+        }
+        Item it = inventory.get(index);
+        if (it.kind.type == Item.Type.CONSUMABLE) {
+            int before = playerHp;
+            playerHp = Math.min(PLAYER_MAX_HP, playerHp + it.kind.heal);
+            inventory.remove(index);
+            message = "Used " + it.kind.displayName + "! Recovered "
+                    + (playerHp - before) + " HP!";
+            turn++;
+            enemyTurn();
+            return;
+        }
+        // 武器・防具の装備（交換）
+        boolean isWeapon = it.kind.type == Item.Type.WEAPON;
+        Item current = isWeapon ? equippedWeapon : equippedArmor;
+        if (current != null && inventory.size() >= MAX_INVENTORY) {
+            message = "Inventory is full! Cannot swap equipment.";
+            return;
+        }
+        inventory.remove(index);
+        if (current != null) {
+            inventory.add(current);
+        }
+        if (isWeapon) {
+            equippedWeapon = it;
+        } else {
+            equippedArmor = it;
+        }
+        message = "Equipped " + it.kind.displayName + "!";
+        turn++;
+        enemyTurn();
     }
 
     private void waitTurn() {
@@ -215,7 +314,7 @@ public class MallScreen implements Screen, InputProcessor {
             }
             int dist = Math.abs(e.x - playerX) + Math.abs(e.y - playerY);
             if (dist == 1) {
-                int damage = Math.max(1, e.attack - PLAYER_DEFENSE);
+                int damage = Math.max(1, e.attack - playerDefense());
                 playerHp -= damage;
                 message = e.kind.name() + " hit you for " + damage + " dmg!";
                 if (playerHp <= 0) {
@@ -286,6 +385,10 @@ public class MallScreen implements Screen, InputProcessor {
         playerHp = PLAYER_MAX_HP;
         gameOver = false;
         message = "";
+        inventory = new ArrayList<Item>();
+        equippedWeapon = null;
+        equippedArmor = null;
+        showInventory = false;
         loadFloor();
     }
 
@@ -295,6 +398,19 @@ public class MallScreen implements Screen, InputProcessor {
             if (keycode == Input.Keys.ENTER) {
                 restart();
                 return true;
+            }
+            return true;
+        }
+        // 持ち物一覧が開いているときは、Iキーで閉じるか数字キーで選ぶだけ。
+        // それ以外のキー（移動など）は受け付けない。
+        if (showInventory) {
+            if (keycode == Input.Keys.I) {
+                showInventory = false;
+                return true;
+            }
+            int index = numberKeyIndex(keycode);
+            if (index >= 0) {
+                useItem(index);
             }
             return true;
         }
@@ -322,14 +438,38 @@ public class MallScreen implements Screen, InputProcessor {
             case Input.Keys.M:
                 showMinimap = !showMinimap;
                 return true;
+            case Input.Keys.I:
+                showInventory = true;
+                return true;
             default:
                 return false;
+        }
+    }
+
+    /** 数字キー（1〜9、0）に対応する持ち物の番号を返す。数字キーでなければ -1。 */
+    private int numberKeyIndex(int keycode) {
+        switch (keycode) {
+            case Input.Keys.NUM_1: return 0;
+            case Input.Keys.NUM_2: return 1;
+            case Input.Keys.NUM_3: return 2;
+            case Input.Keys.NUM_4: return 3;
+            case Input.Keys.NUM_5: return 4;
+            case Input.Keys.NUM_6: return 5;
+            case Input.Keys.NUM_7: return 6;
+            case Input.Keys.NUM_8: return 7;
+            case Input.Keys.NUM_9: return 8;
+            case Input.Keys.NUM_0: return 9;
+            default: return -1;
         }
     }
 
     @Override
     public boolean touchDown(int screenX, int screenY, int pointer, int button) {
         if (gameOver) {
+            return true;
+        }
+        if (showInventory) {
+            // 持ち物一覧が開いているときはタップ移動しない
             return true;
         }
         // タップした方向へ1マス進む（斜めは横方向を優先）
@@ -402,6 +542,14 @@ public class MallScreen implements Screen, InputProcessor {
                 drawTile(x, y);
             }
         }
+        // アイテム（行った場所にあるものだけ表示する）
+        for (Item it : items) {
+            if (!floor.visited[it.x][it.y]) {
+                continue;
+            }
+            shapes.setColor(it.kind.r, it.kind.g, it.kind.b, 1f);
+            shapes.circle(it.x * TILE + TILE / 2f, it.y * TILE + TILE / 2f, TILE * 0.22f);
+        }
         // 敵（行った場所にいる敵だけ表示する）
         for (Enemy e : enemies) {
             if (!floor.visited[e.x][e.y]) {
@@ -417,6 +565,14 @@ public class MallScreen implements Screen, InputProcessor {
 
         batch.setProjectionMatrix(camera.combined);
         batch.begin();
+        for (Item it : items) {
+            if (!floor.visited[it.x][it.y]) {
+                continue;
+            }
+            font.setColor(Color.BLACK);
+            font.draw(batch, String.valueOf(it.kind.symbol),
+                    it.x * TILE + TILE / 2f - 11, it.y * TILE + TILE / 2f + 14);
+        }
         for (Enemy e : enemies) {
             if (!floor.visited[e.x][e.y]) {
                 continue;
@@ -432,6 +588,9 @@ public class MallScreen implements Screen, InputProcessor {
         drawHud();
         if (showMinimap) {
             drawMinimap();
+        }
+        if (showInventory) {
+            drawInventory();
         }
         if (gameOver) {
             drawGameOver();
@@ -506,7 +665,7 @@ public class MallScreen implements Screen, InputProcessor {
         }
     }
 
-    /** HUD：階数とフロアタイプ名、HP・ターン数、キー案内、メッセージ。 */
+    /** HUD：階数とフロアタイプ名、HP・攻撃力・防御力・装備、ターン数、キー案内、メッセージ。 */
     private void drawHud() {
         float topY = camera.position.y + VIEW_H / 2f;
         float leftX = camera.position.x - VIEW_W / 2f;
@@ -514,7 +673,7 @@ public class MallScreen implements Screen, InputProcessor {
         Gdx.gl.glBlendFunc(GL20.GL_SRC_ALPHA, GL20.GL_ONE_MINUS_SRC_ALPHA);
         shapes.begin(ShapeRenderer.ShapeType.Filled);
         shapes.setColor(0f, 0f, 0f, 0.55f);
-        shapes.rect(leftX, topY - 92, VIEW_W, 92);
+        shapes.rect(leftX, topY - 120, VIEW_W, 120);
         shapes.end();
         Gdx.gl.glDisable(GL20.GL_BLEND);
 
@@ -523,12 +682,78 @@ public class MallScreen implements Screen, InputProcessor {
         hudFont.setColor(Color.WHITE);
         hudFont.draw(batch, "DOPAMINE MALL  " + floorNumber + "F  -  " + floor.type.displayName,
                 leftX + 12, topY - 22);
-        hudFont.draw(batch, "HP " + playerHp + "/" + PLAYER_MAX_HP + "   TURN " + turn
-                        + "   [M] MAP   [SPACE] WAIT",
+        hudFont.draw(batch, "HP " + playerHp + "/" + PLAYER_MAX_HP
+                        + "   ATK " + playerAttack() + "   DEF " + playerDefense()
+                        + "   WPN " + (equippedWeapon != null ? equippedWeapon.kind.displayName : "-")
+                        + "   ARM " + (equippedArmor != null ? equippedArmor.kind.displayName : "-"),
                 leftX + 12, topY - 50);
+        hudFont.draw(batch, "TURN " + turn + "   [M] MAP   [I] ITEMS   [SPACE] WAIT",
+                leftX + 12, topY - 78);
         if (!message.isEmpty()) {
             hudFont.setColor(Color.YELLOW);
-            hudFont.draw(batch, message, leftX + 12, topY - 78);
+            hudFont.draw(batch, message, leftX + 12, topY - 106);
+        }
+        batch.end();
+    }
+
+    /** 持ち物一覧：オーバーレイ表示。数字キーで選んで使う／装備する。 */
+    private void drawInventory() {
+        float cx = camera.position.x;
+        float cy = camera.position.y;
+        float panelW = 700;
+        float lineH = 30;
+        int rows = inventory.size() + 4;
+        float panelH = 30 + rows * lineH + 16;
+        float x0 = cx - panelW / 2f;
+        float y0 = cy + panelH / 2f;
+
+        Gdx.gl.glEnable(GL20.GL_BLEND);
+        Gdx.gl.glBlendFunc(GL20.GL_SRC_ALPHA, GL20.GL_ONE_MINUS_SRC_ALPHA);
+        shapes.begin(ShapeRenderer.ShapeType.Filled);
+        shapes.setColor(0f, 0f, 0f, 0.85f);
+        shapes.rect(x0, y0 - panelH, panelW, panelH);
+        shapes.end();
+        Gdx.gl.glDisable(GL20.GL_BLEND);
+
+        batch.setProjectionMatrix(camera.combined);
+        batch.begin();
+        float ty = y0 - 26;
+        hudFont.setColor(Color.YELLOW);
+        hudFont.draw(batch, "ITEMS  (" + inventory.size() + "/" + MAX_INVENTORY + ")",
+                x0 + 16, ty);
+        ty -= lineH;
+        hudFont.setColor(Color.WHITE);
+        hudFont.draw(batch, "WPN: " + (equippedWeapon != null
+                        ? equippedWeapon.kind.displayName + " (ATK+"
+                        + equippedWeapon.kind.attackBonus + ")" : "-")
+                        + "    ARM: " + (equippedArmor != null
+                        ? equippedArmor.kind.displayName + " (DEF+"
+                        + equippedArmor.kind.defenseBonus + ")" : "-"),
+                x0 + 16, ty);
+        ty -= lineH;
+        hudFont.setColor(Color.LIGHT_GRAY);
+        hudFont.draw(batch, "Press 1-0 to use / equip.  Press [I] to close.",
+                x0 + 16, ty);
+        for (int i = 0; i < inventory.size(); i++) {
+            ty -= lineH;
+            Item it = inventory.get(i);
+            String desc;
+            if (it.kind.type == Item.Type.CONSUMABLE) {
+                desc = "Heal +" + it.kind.heal;
+            } else if (it.kind.type == Item.Type.WEAPON) {
+                desc = "ATK +" + it.kind.attackBonus;
+            } else {
+                desc = "DEF +" + it.kind.defenseBonus;
+            }
+            hudFont.setColor(Color.WHITE);
+            hudFont.draw(batch, (i + 1) % 10 + ". " + it.kind.symbol + " "
+                            + it.kind.displayName + "  -  " + desc,
+                    x0 + 16, ty);
+        }
+        if (inventory.isEmpty()) {
+            ty -= lineH;
+            hudFont.setColor(Color.LIGHT_GRAY);
+            hudFont.draw(batch, "(empty)", x0 + 16, ty);
         }
         batch.end();
     }
@@ -563,7 +788,7 @@ public class MallScreen implements Screen, InputProcessor {
         float mapH = floor.h * cell;
         float topY = camera.position.y + VIEW_H / 2f;
         float ox = camera.position.x + VIEW_W / 2f - mapW - 12;
-        float oy = topY - 92 - mapH - 12;
+        float oy = topY - 120 - mapH - 12;
 
         Gdx.gl.glEnable(GL20.GL_BLEND);
         Gdx.gl.glBlendFunc(GL20.GL_SRC_ALPHA, GL20.GL_ONE_MINUS_SRC_ALPHA);
