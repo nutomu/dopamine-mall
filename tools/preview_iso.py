@@ -8,20 +8,37 @@ samples/preview25d/ に作る。ローカル確認用で、リポジトリには
 
 使い方: python3 tools/preview_iso.py
 """
+import json
 import os
 
-from PIL import Image, ImageDraw, ImageFilter
+from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
 TILE = 64
+WALL_H = TILE * 2
 W, H = 1280, 720
 
 BASE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SPRITES = os.path.join(BASE, "android", "assets", "sprites2d")
 OUT_DIR = os.path.join(BASE, "samples", "preview25d")
+FONT_PATH = "/tmp/NotoSansJP-Regular.ttf"
+
+NORM = {}
+try:
+    with open(os.path.join(SPRITES, "norm.json"), encoding="utf-8") as f:
+        NORM = json.load(f)
+except FileNotFoundError:
+    pass
 
 
 def load(name):
     return Image.open(os.path.join(SPRITES, name + ".png")).convert("RGBA")
+
+
+def font(size):
+    try:
+        return ImageFont.truetype(FONT_PATH, size)
+    except (OSError, IOError):
+        return ImageFont.load_default()
 
 
 def tile(tx, ty, ox, oy):
@@ -29,11 +46,40 @@ def tile(tx, ty, ox, oy):
     return ox + tx * TILE, oy + ty * TILE
 
 
-def draw_anchored(img, tex, cx, base_y, height):
-    """スプライトを足元中心 (cx, base_y) に、高さ height で描く。"""
+def norm_scale(name):
+    """方向ごとの表示サイズ正規化の倍率（ゲーム本体と同じ norm.json）。"""
+    entry = NORM.get(name)
+    return entry["scale"] if entry else 1.0
+
+
+def draw_shadow(img, cx, base_y, width):
+    """キャラクターの足元の柔らかい影（半透明の楕円）。"""
+    h = int(width * 0.32)
+    layer = Image.new("RGBA", img.size, (0, 0, 0, 0))
+    d = ImageDraw.Draw(layer)
+    d.ellipse([cx - width / 2, base_y - h / 2 + 2, cx + width / 2, base_y + h / 2 + 2],
+              fill=(0, 0, 0, 100))
+    layer = layer.filter(ImageFilter.GaussianBlur(3))
+    img.alpha_composite(layer)
+
+
+def draw_anchored(img, tex, cx, base_y, height, name=None):
+    """スプライトを足元中心 (cx, base_y) に、高さ height で描く。
+    キャラクターは norm.json の倍率を掛けて正規化する。"""
+    if name is not None:
+        height = int(height * norm_scale(name))
     w = max(1, int(height * tex.width / tex.height))
     spr = tex.resize((w, height), Image.LANCZOS)
     img.paste(spr, (int(cx - w / 2), int(base_y - height)), spr)
+
+
+def draw_wall(img, px, py):
+    """背の高い壁：下端をタイルの下端に合わせ、上に1タイル分はみ出す。"""
+    wall = load("wall")
+    h = WALL_H
+    w = TILE
+    spr = wall.resize((w, h), Image.LANCZOS)
+    img.paste(spr, (px - TILE // 2, py - TILE // 2), spr)
 
 
 # タイル文字 → (地形スプライト名, 高さ)（壁 "#" は1マス＝1チップで描く）
@@ -73,10 +119,10 @@ ACTORS = {
 
 def draw_floor(layout, floor_tex, ox, oy, img):
     """レイアウトをペインター法（行ごとに上から下へ）で描く。
-    壁は1マス＝1チップ（上面と前面を1枚に含む壁チップをそのまま1枚描く）。"""
+    壁は背の高いチップ（下端をタイルの下端に合わせ、上に1タイル分はみ出す）。
+    キャラクターは正規化したサイズで描き、足元に影を付ける。"""
     rows = len(layout)
     cols = len(layout[0])
-    wall = load("wall")
     for y in range(rows):
         for x in range(cols):
             ch = layout[y][x]
@@ -86,10 +132,9 @@ def draw_floor(layout, floor_tex, ox, oy, img):
             # 床の四角いチップ
             chip = floor_tex.resize((TILE, TILE), Image.LANCZOS)
             img.paste(chip, (px - TILE // 2, py - TILE // 2), chip)
-            # 壁は1チップで描く
+            # 壁は背の高いチップで描く
             if ch == "#":
-                wchip = wall.resize((TILE, TILE), Image.LANCZOS)
-                img.paste(wchip, (px - TILE // 2, py - TILE // 2), wchip)
+                draw_wall(img, px, py)
                 continue
             # 地形（家具・階段など）
             if ch in TERRAIN:
@@ -105,7 +150,8 @@ def draw_floor(layout, floor_tex, ox, oy, img):
                     spr = tex.resize((w, height), Image.LANCZOS)
                     img.paste(spr, (px - w // 2, py - height // 2), spr)
                 else:
-                    draw_anchored(img, load(name), px, py, height)
+                    draw_shadow(img, px, py, 40)
+                    draw_anchored(img, load(name), px, py, height, name)
 
 
 def add_glow(img, cx, cy, radius, color, alpha):
@@ -118,8 +164,67 @@ def add_glow(img, cx, cy, radius, color, alpha):
     img.alpha_composite(glow)
 
 
+def draw_debug_preview():
+    """スプライト確認デバッグモードの画面のプレビュー（主人公）。
+    ゲーム本体の drawSpriteDebug と同じ配置で、8方向×停止／歩行／武器使用の
+    3段を表示する。各セルの下に実寸（幅×高さ）とフレーム数を出す。"""
+    img = Image.new("RGBA", (W, H), (5, 5, 13, 255))
+    d = ImageDraw.Draw(img)
+    f_title = font(28)
+    f_text = font(20)
+    f_small = font(16)
+    cx = W // 2
+    d.text((cx, 40), "スプライト確認", font=f_title, fill=(255, 220, 60), anchor="ma")
+    d.text((cx, 80), "主人公  (1 / 15)", font=f_text, fill=(255, 255, 255), anchor="ma")
+    scales = "倍率： " + " ".join("%.2f" % norm_scale("hero_d%d_f0" % dd) for dd in range(8))
+    d.text((cx, 108), scales, font=f_small, fill=(180, 180, 180), anchor="ma")
+    dirs = ["南", "南西", "西", "北西", "北", "北東", "東", "南東"]
+    rows = [("停止", "hero_d%d_f0"), ("歩行", "hero_d%d_f1"), ("武器使用", "hero_d%d_f2")]
+    col_w = W // 8
+    row_feet = [300, 440, 580]
+    row_label_y = [200, 340, 480]
+    slash = load("slash")
+    hitstar = load("hitstar")
+    for dd in range(8):
+        col_cx = int(col_w * (dd + 0.5))
+        d.text((col_cx, 140), dirs[dd], font=f_text, fill=(255, 255, 255), anchor="ma")
+    for row, (label, pattern) in enumerate(rows):
+        d.text((16, row_label_y[row]), label, font=f_text, fill=(80, 200, 255))
+        for dd in range(8):
+            name = pattern % dd
+            col_cx = int(col_w * (dd + 0.5))
+            feet_y = row_feet[row]
+            draw_x, draw_y = col_cx, feet_y
+            if row == 2:
+                # 武器使用：攻撃方向へ突進（南＝下、北＝上など）
+                dxy = [(0, 1), (-1, 1), (-1, 0), (-1, -1),
+                       (0, -1), (1, -1), (1, 0), (1, 1)][dd]
+                draw_x += int(dxy[0] * 14)
+                draw_y += int(dxy[1] * 14)
+            draw_shadow(img, draw_x, feet_y, 44)
+            draw_anchored(img, load(name), draw_x, draw_y, 72, name)
+            if row == 2:
+                dxy = [(0, 1), (-1, 1), (-1, 0), (-1, -1),
+                       (0, -1), (1, -1), (1, 0), (1, 1)][dd]
+                tx = col_cx + dxy[0] * 40
+                ty = feet_y + dxy[1] * 40
+                spr = slash.resize((64, 64), Image.LANCZOS)
+                img.paste(spr, (tx - 32, ty - 32), spr)
+                star = hitstar.resize((48, 48), Image.LANCZOS)
+                img.paste(star, (tx - 24, ty - 24), star)
+            entry = NORM.get(name, {})
+            size = "%dx%d  4フレーム" % (entry.get("w", 0), entry.get("h", 0))
+            d.text((col_cx, feet_y + 8), size, font=f_small,
+                   fill=(180, 180, 180), anchor="ma")
+    d.text((cx, 660), "左右キー：キャラ切替  B/Back：タイトルへ", font=f_text,
+           fill=(255, 255, 255), anchor="ma")
+    img.convert("RGB").save(os.path.join(OUT_DIR, "debug_sprites.png"))
+    print("wrote", os.path.join(OUT_DIR, "debug_sprites.png"))
+
+
 def main():
     os.makedirs(OUT_DIR, exist_ok=True)
+    draw_debug_preview()
 
     # ---- 下層：明るいモール（テナントフロア）----
     lower = [

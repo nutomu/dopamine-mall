@@ -616,8 +616,8 @@
  },
  "wall": {
   "file": "wall.png",
-  "h": 160,
-  "w": 159
+  "h": 1944,
+  "w": 972
  },
  "yeti": {
   "file": "yeti.png",

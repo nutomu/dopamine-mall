@@ -37,9 +37,15 @@ public final class Localization {
         put("title.subtitle",
                 "An endless shopping mall dungeon roguelike",
                 "永遠に登れるショッピングモールがダンジョンのローグライクRPG");
-        put("title.press_start",
-                "PRESS ENTER TO START",
-                "エンターキーではじめる");
+        put("title.menu_start",
+                "START GAME",
+                "ゲームスタート");
+        put("title.menu_debug",
+                "SPRITE VIEWER",
+                "スプライト確認");
+        put("title.menu_hint",
+                "Up/Down: select  Enter: confirm  F1: sprite viewer",
+                "上下キー：選択  エンター：決定  F1：スプライト確認");
         put("title.keys1",
                 "Move: Arrow keys / WASD  (+Q/E/Z/C: diagonals)   [M] MAP   [I] ITEMS   [N] MUSIC",
                 "移動：矢印キー／WASD（＋Q/E/Z/C：ななめ）  [M]マップ  [I]持ち物  [N]音楽");
@@ -49,6 +55,39 @@ public final class Localization {
         put("title.language",
                 "Language: English  (L: switch to Japanese)",
                 "言語：日本語  （Lキー：英語に切り替え）");
+
+        put("debug.title",
+                "SPRITE VIEWER",
+                "スプライト確認");
+        put("debug.hero",
+                "Hero",
+                "主人公");
+        put("debug.idle",
+                "IDLE",
+                "停止");
+        put("debug.walk",
+                "WALK",
+                "歩行");
+        put("debug.attack",
+                "ATTACK",
+                "武器使用");
+        put("debug.hint",
+                "Left/Right: character  B/Back: title",
+                "左右キー：キャラ切替  B/Back：タイトルへ");
+        put("debug.cell",
+                "%dx%d  %d frames",
+                "%dx%d  %dフレーム");
+        put("debug.scales",
+                "scale:",
+                "倍率：");
+        put("debug.dir0", "S", "南");
+        put("debug.dir1", "SW", "南西");
+        put("debug.dir2", "W", "西");
+        put("debug.dir3", "NW", "北西");
+        put("debug.dir4", "N", "北");
+        put("debug.dir5", "NE", "北東");
+        put("debug.dir6", "E", "東");
+        put("debug.dir7", "SE", "南東");
 
         put("hud.game_name", "DOPAMINE MALL", "ドパミン・モール");
         put("hud.floor", "%dF", "%d階");

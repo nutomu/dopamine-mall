@@ -97,6 +97,18 @@ import java.util.List;
  *   攻撃時は攻撃方向へ素早く突進して戻る＋斬撃エフェクト＋対象のフラッシュ。
  * - 壁は1マス＝1チップで描く（上面と前面を1枚に含む壁チップをタイルごとに
  *   そのまま1枚描くだけ）。面分割（上面・前面バンド・角）はやめた。
+ * 壁の高さ・重なりとキャラクターのサイズ正規化、スプライト確認デバッグモード。
+ * - 壁チップはタイルより背が高い（幅64×高さ128、タイル2枚分）。下端を
+ *   タイルの下端に合わせ、上に1タイル分はみ出して描く。描画順は行ごとの
+ *   ペインター法のままで、壁のはみ出しが上の行の床の上に、壁より手前
+ *   （南）の行のキャラクターが壁の前面の上に描かれる。
+ * - キャラクターの表示サイズ正規化：tools/make_norm.py で測った実寸
+ *   （norm.json）を使い、方向ごとの見た目の大きさのばらつきを抑える。
+ *   同じ方向の全フレームに同じ倍率を使うため歩行中に脈打たない。
+ *   足元には柔らかい影（半透明の楕円）を描く。
+ * - スプライト確認デバッグモード：タイトル画面のメニューまたは F1 キーで
+ *   開く。キャラクター種別ごとに8方向×停止／歩行／武器使用の3段を表示し、
+ *   各セルの下に実寸（幅×高さ）とフレーム数を出す。左右キーで種別を切り替える。
  */
 public class MallScreen implements Screen, InputProcessor {
     /** 8方向のグリッド移動量。向き 0=南、1=南西、2=西、3=北西、4=北、5=北東、6=東、7=南東。
@@ -121,6 +133,8 @@ public class MallScreen implements Screen, InputProcessor {
 
     /** 1マスの画面サイズ（四角いチップの幅・高さ。シレン風見下ろし）。 */
     static final int TILE = 64;
+    /** 壁チップの高さ（タイル2枚分。下端をタイルの下端に合わせ、上に1タイル分はみ出す）。 */
+    static final float WALL_H = TILE * 2f;
     static final int VIEW_W = 1280;
     static final int VIEW_H = 800;
     /** 視界の広さ（プレイヤーから歩いて何マス先まで「行った場所」にするか）。 */
@@ -211,6 +225,14 @@ public class MallScreen implements Screen, InputProcessor {
     /** 音楽・タイトル画面・店内放送・演出（M6）。 */
     private MusicManager music = new MusicManager();
     private boolean titleScreen = true;
+    /** タイトル画面のメニュー選択（0=ゲームスタート、1=スプライト確認）。 */
+    private int titleMenuIndex = 0;
+    /** スプライト確認デバッグモード（タイトル画面から開く）。 */
+    private boolean spriteDebug = false;
+    /** デバッグモードで表示中のキャラクター種別（0=主人公、1〜=敵の種類順）。 */
+    private int debugKindIndex = 0;
+    /** デバッグモードのアニメーション用タイマー（歩行・武器使用の再生に使う）。 */
+    private float debugTime = 0f;
     /** 店内放送：20ターンごとにフロアタイプの文言を切り替える。 */
     private static final int ANNOUNCE_EVERY_TURNS = 20;
     private String announcement = "";
@@ -805,19 +827,55 @@ public class MallScreen implements Screen, InputProcessor {
 
     @Override
     public boolean keyDown(int keycode) {
-        // タイトル画面：Enterキーなどでゲーム開始する。Lキーで言語を切り替える。
+        // スプライト確認デバッグモード：左右で種別切替、B／Back／Esc／F1 でタイトルへ。
+        if (spriteDebug) {
+            if (keycode == Input.Keys.LEFT || keycode == Input.Keys.A) {
+                moveDebugKind(-1);
+                return true;
+            }
+            if (keycode == Input.Keys.RIGHT || keycode == Input.Keys.D) {
+                moveDebugKind(1);
+                return true;
+            }
+            if (keycode == Input.Keys.B || keycode == Input.Keys.BACK
+                    || keycode == Input.Keys.ESCAPE || keycode == Input.Keys.F1
+                    || keycode == Input.Keys.BUTTON_B) {
+                spriteDebug = false;
+                return true;
+            }
+            if (keycode == Input.Keys.L) {
+                toggleLanguage();
+                return true;
+            }
+            return true;
+        }
+        // タイトル画面：上下でメニュー（ゲームスタート／スプライト確認）を選び、
+        // 決定キーで実行する。Lキーで言語を切り替える。F1キーで直接スプライト確認を開く。
         if (titleScreen) {
             if (keycode == Input.Keys.L) {
-                Localization.toggleLanguage();
-                Fonts.reload();
-                font = Fonts.font;
-                hudFont = Fonts.hudFont;
+                toggleLanguage();
+                return true;
+            }
+            if (keycode == Input.Keys.F1) {
+                openSpriteDebug();
+                return true;
+            }
+            if (keycode == Input.Keys.UP || keycode == Input.Keys.W) {
+                titleMenuIndex = (titleMenuIndex + 1) % 2;
+                return true;
+            }
+            if (keycode == Input.Keys.DOWN || keycode == Input.Keys.S) {
+                titleMenuIndex = (titleMenuIndex + 1) % 2;
                 return true;
             }
             if (keycode == Input.Keys.ENTER || keycode == Input.Keys.CENTER
                     || keycode == Input.Keys.BUTTON_A || keycode == Input.Keys.SPACE
                     || keycode == Input.Keys.BUTTON_START) {
-                startGame();
+                if (titleMenuIndex == 1) {
+                    openSpriteDebug();
+                } else {
+                    startGame();
+                }
             }
             return true;
         }
@@ -937,6 +995,87 @@ public class MallScreen implements Screen, InputProcessor {
         updateMusic();
     }
 
+    /** 言語を切り替え、フォントを作り直す（タイトル画面・デバッグ画面の L キー用）。 */
+    private void toggleLanguage() {
+        Localization.toggleLanguage();
+        Fonts.reload();
+        font = Fonts.font;
+        hudFont = Fonts.hudFont;
+    }
+
+    /** スプライト確認デバッグモードを開く（タイトル画面から）。 */
+    private void openSpriteDebug() {
+        spriteDebug = true;
+        debugTime = 0f;
+    }
+
+    /** デバッグモードで表示するキャラクター種別を移動する（端で折り返す）。 */
+    private void moveDebugKind(int delta) {
+        int count = debugEntryCount();
+        debugKindIndex = (debugKindIndex + delta + count) % count;
+    }
+
+    /** デバッグモードの表示対象の数（主人公＋敵14種）。 */
+    private int debugEntryCount() {
+        return 1 + Enemy.Kind.values().length;
+    }
+
+    /** デバッグモードで主人公を表示しているかどうか。 */
+    private boolean debugIsHero() {
+        return debugKindIndex == 0;
+    }
+
+    /** デバッグモードで表示中の敵の種類（主人公のときは null）。 */
+    private Enemy.Kind debugKind() {
+        if (debugIsHero()) {
+            return null;
+        }
+        return Enemy.Kind.values()[debugKindIndex - 1];
+    }
+
+    /** デバッグモードで表示中のキャラクター名（現在の言語）。 */
+    private String debugName() {
+        if (debugIsHero()) {
+            return Localization.t("debug.hero");
+        }
+        return debugKind().label();
+    }
+
+    /** デバッグモードで表示中のキャラクターの歩行フレーム数。 */
+    private int debugFrameCount() {
+        if (debugIsHero()) {
+            return sprites.heroFrameCount();
+        }
+        return sprites.enemyFrameCount(debugKind());
+    }
+
+    /** デバッグモードで表示中のキャラクターの描画基準高さ（ボスは大きく）。 */
+    private float debugBaseHeight() {
+        if (!debugIsHero() && isBossKind(debugKind())) {
+            return 100f;
+        }
+        return 72f;
+    }
+
+    /** ボスの種類かどうか（店長／巨大着ぐるみ／大天使）。 */
+    private static boolean isBossKind(Enemy.Kind kind) {
+        return kind == Enemy.Kind.MANAGER || kind == Enemy.Kind.GIANT_MASCOT
+                || kind == Enemy.Kind.ARCHANGEL;
+    }
+
+    /** デバッグモードで表示中のキャラクターの、向きと行に応じたスプライト名。
+     * row は 0=停止、1=歩行、2=武器使用。歩行は frame で切り替える。 */
+    private String debugSpriteName(int dir, int row, int frame) {
+        if (debugIsHero()) {
+            return sprites.heroSpriteName(dir, frame % sprites.heroFrameCount());
+        }
+        Enemy.Kind kind = debugKind();
+        if (sprites.hasDirectionSprites(kind)) {
+            return sprites.enemySpriteName(kind, dir);
+        }
+        return sprites.enemySpriteName(kind);
+    }
+
     /** 数字キー（1〜9、0）に対応する持ち物の番号を返す。数字キーでなければ -1。 */
     private int numberKeyIndex(int keycode) {
         switch (keycode) {
@@ -956,9 +1095,17 @@ public class MallScreen implements Screen, InputProcessor {
 
     @Override
     public boolean touchDown(int screenX, int screenY, int pointer, int button) {
-        // タイトル画面：タップでゲーム開始する。
+        // タイトル画面：スプライト確認のメニュー行をタップしたらデバッグモードを
+        // 開き、それ以外のタップでゲーム開始する。
         if (titleScreen) {
-            startGame();
+            Vector3 v = new Vector3(screenX, screenY, 0);
+            viewport.unproject(v);
+            float cy = camera.position.y;
+            if (v.y > cy - 125 && v.y < cy - 85) {
+                openSpriteDebug();
+            } else {
+                startGame();
+            }
             return true;
         }
         if (gameOver) {
@@ -1030,6 +1177,12 @@ public class MallScreen implements Screen, InputProcessor {
         Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT);
         viewport.apply();
         followCamera();
+
+        // スプライト確認デバッグモード：ダンジョンは描かず、確認画面だけ表示する。
+        if (spriteDebug) {
+            drawSpriteDebug(delta);
+            return;
+        }
 
         // タイトル画面：ダンジョンは描かず、タイトルだけ表示する。
         if (titleScreen) {
@@ -1194,12 +1347,124 @@ public class MallScreen implements Screen, InputProcessor {
         drawCentered(font, "DOPAMINE MALL", cx, cy + 20);
         hudFont.setColor(Color.WHITE);
         drawCentered(hudFont, Localization.t("title.subtitle"), cx, cy - 20);
-        drawCentered(hudFont, Localization.t("title.press_start"), cx, cy - 70);
+        // メニュー：ゲームスタート／スプライト確認。選んでいる項目に ">" を付ける。
+        hudFont.setColor(titleMenuIndex == 0 ? Color.YELLOW : Color.WHITE);
+        drawCentered(hudFont, (titleMenuIndex == 0 ? "> " : "  ")
+                + Localization.t("title.menu_start"), cx, cy - 70);
+        hudFont.setColor(titleMenuIndex == 1 ? Color.YELLOW : Color.WHITE);
+        drawCentered(hudFont, (titleMenuIndex == 1 ? "> " : "  ")
+                + Localization.t("title.menu_debug"), cx, cy - 105);
         hudFont.setColor(Color.LIGHT_GRAY);
-        drawCentered(hudFont, Localization.t("title.keys1"), cx, cy - 110);
-        drawCentered(hudFont, Localization.t("title.keys2"), cx, cy - 140);
+        drawCentered(hudFont, Localization.t("title.menu_hint"), cx, cy - 140);
+        drawCentered(hudFont, Localization.t("title.keys1"), cx, cy - 175);
+        drawCentered(hudFont, Localization.t("title.keys2"), cx, cy - 205);
         hudFont.setColor(Color.CYAN);
-        drawCentered(hudFont, Localization.t("title.language"), cx, cy - 180);
+        drawCentered(hudFont, Localization.t("title.language"), cx, cy - 245);
+        batch.end();
+    }
+
+    /** スプライト確認デバッグモードの画面。
+     * キャラクター種別ごとに8方向を列に並べ、行を「停止」「歩行」「武器使用」の
+     * 3段にした一覧を表示する。歩行は実際の歩行フレームをアニメーションさせ、
+     * 武器使用はゲーム内の攻撃アニメーション（突進＋斬撃＋フラッシュ）を
+     * その向きで再生して表示する。各セルの下に実寸（幅×高さ）とフレーム数を出す。
+     * 左右キーで種別を切り替える。B／Back／Esc／F1 でタイトル画面に戻る。 */
+    private void drawSpriteDebug(float delta) {
+        debugTime += delta;
+        float cx = camera.position.x;
+        float cy = camera.position.y;
+        Gdx.gl.glEnable(GL20.GL_BLEND);
+        Gdx.gl.glBlendFunc(GL20.GL_SRC_ALPHA, GL20.GL_ONE_MINUS_SRC_ALPHA);
+        shapes.setProjectionMatrix(camera.combined);
+        shapes.begin(ShapeRenderer.ShapeType.Filled);
+        shapes.setColor(0.02f, 0.02f, 0.05f, 1f);
+        shapes.rect(cx - VIEW_W / 2f, cy - VIEW_H / 2f, VIEW_W, VIEW_H);
+        shapes.end();
+        Gdx.gl.glDisable(GL20.GL_BLEND);
+
+        float colW = VIEW_W / 8f;
+        float baseH = debugBaseHeight();
+        int frames = debugFrameCount();
+        // 歩行フレーム（0.15秒ごとに切り替える）と攻撃の進行度（0〜1を繰り返す）。
+        int walkFrame = (int) (debugTime / 0.15f) % Math.max(1, frames);
+        float attackPhase = (debugTime * 1.2f) % 1f;
+
+        batch.setProjectionMatrix(camera.combined);
+        batch.begin();
+        // タイトルと種別名・番号
+        hudFont.setColor(Color.YELLOW);
+        drawCentered(hudFont, Localization.t("debug.title"), cx, cy + 350);
+        hudFont.setColor(Color.WHITE);
+        drawCentered(hudFont, debugName() + "  (" + (debugKindIndex + 1)
+                + " / " + debugEntryCount() + ")", cx, cy + 315);
+        // 方向ごとの表示倍率（正規化の確認用）
+        StringBuilder scales = new StringBuilder(Localization.t("debug.scales"));
+        for (int d = 0; d < 8; d++) {
+            String name = debugSpriteName(d, 0, 0);
+            Sprites.Norm n = sprites.normOf(name);
+            scales.append(" ").append(n != null ? String.format("%.2f", n.scale) : "-");
+        }
+        hudFont.setColor(Color.LIGHT_GRAY);
+        drawCentered(hudFont, scales.toString(), cx, cy + 288);
+        // 方向ラベル
+        for (int d = 0; d < 8; d++) {
+            float colCx = cx - VIEW_W / 2f + colW * (d + 0.5f);
+            drawCentered(hudFont, Localization.t("debug.dir" + d), colCx, cy + 262);
+        }
+        // 3段の行ラベルと各セル
+        String[] rowKeys = {"debug.idle", "debug.walk", "debug.attack"};
+        float[] rowFeet = {cy + 165, cy + 35, cy - 95};
+        float[] rowLabelY = {cy + 245, cy + 115, cy - 15};
+        for (int row = 0; row < 3; row++) {
+            hudFont.setColor(Color.CYAN);
+            hudFont.draw(batch, Localization.t(rowKeys[row]),
+                    cx - VIEW_W / 2f + 12, rowLabelY[row]);
+            for (int d = 0; d < 8; d++) {
+                float colCx = cx - VIEW_W / 2f + colW * (d + 0.5f);
+                float feetY = rowFeet[row];
+                // 武器使用の行：攻撃方向へ突進する（ゲーム内の攻撃アニメーションと同じ）
+                float drawX = colCx;
+                float drawY = feetY;
+                if (row == 2) {
+                    float mag = (float) Math.sin(attackPhase * Math.PI) * 0.35f * TILE;
+                    int[] dir = DIR_DXY[d];
+                    drawX += dir[0] * mag;
+                    drawY += -dir[1] * mag;
+                }
+                // 歩行の行：1フレームしかない敵は小さく跳ねて歩行中を示す
+                if (row == 1 && frames <= 1) {
+                    drawY += (float) Math.abs(Math.sin(debugTime * 6f)) * 3f;
+                }
+                int frame = row == 1 ? walkFrame : 0;
+                String name = debugSpriteName(d, row, frame);
+                sprites.drawShadow(batch, drawX, feetY, baseH * 0.62f);
+                sprites.drawCharacter(batch, name, drawX, drawY, baseH);
+                // 武器使用の行：斬撃エフェクトとフラッシュ（攻撃対象の位置に描く）
+                if (row == 2) {
+                    int[] dir = DIR_DXY[d];
+                    float tx = colCx + dir[0] * TILE * 0.62f;
+                    float ty = feetY - dir[1] * TILE * 0.62f;
+                    float alpha = 1f - attackPhase;
+                    batch.setColor(1f, 1f, 1f, alpha);
+                    batch.draw(sprites.slash, tx - 32, ty - 32, 64, 64);
+                    batch.setColor(1f, 1f, 0.6f, alpha);
+                    batch.draw(sprites.hitstar, tx - 24, ty - 24, 48, 48);
+                    batch.setColor(1f, 1f, 1f, 1f);
+                }
+                // セルの下に実寸（幅×高さ）とフレーム数を表示する
+                Sprites.Norm n = sprites.normOf(name);
+                String size;
+                if (n != null && n.w > 0) {
+                    size = Localization.t("debug.cell", n.w, n.h, frames);
+                } else {
+                    size = Localization.t("debug.cell", 0, 0, frames);
+                }
+                hudFont.setColor(Color.LIGHT_GRAY);
+                drawCentered(hudFont, size, colCx, feetY - 18);
+            }
+        }
+        hudFont.setColor(Color.WHITE);
+        drawCentered(hudFont, Localization.t("debug.hint"), cx, cy - 170);
         batch.end();
     }
 
@@ -1263,7 +1528,7 @@ public class MallScreen implements Screen, InputProcessor {
             // 未踏の場所は暗くする（スプライトをほぼ黒く着色して描く）
             batch.setColor(0.05f, 0.05f, 0.08f, 1f);
             if (t == Floor.Tile.WALL) {
-                batch.draw(sprites.wall, px - TILE / 2f, py - TILE / 2f, TILE, TILE);
+                drawWall(px, py);
             } else if (t == Floor.Tile.FLOOR) {
                 batch.draw(sprites.floorTexture(floor.type),
                         px - TILE / 2f, py - TILE / 2f, TILE, TILE);
@@ -1276,7 +1541,7 @@ public class MallScreen implements Screen, InputProcessor {
             return;
         }
         if (t == Floor.Tile.WALL) {
-            batch.draw(sprites.wall, px - TILE / 2f, py - TILE / 2f, TILE, TILE);
+            drawWall(px, py);
         } else if (t == Floor.Tile.FLOOR) {
             // フロアタイプごとにわずかに色調を変える
             float[] c = floorTint();
@@ -1295,6 +1560,14 @@ public class MallScreen implements Screen, InputProcessor {
                     px - TILE / 2f, py - TILE / 2f, TILE, TILE);
             drawTerrain(t, px, py);
         }
+    }
+
+    /** 背の高い壁を描く（batch.begin() の中で呼ぶこと）。
+     * 壁チップはタイルより背が高く（幅64×高さ128）、下端をタイルの下端に
+     * 合わせて上に1タイル分はみ出す。行ごとのペインター法により、はみ出し
+     * 部分が上の行の床の上に、壁より手前（南）の行のものが壁の前面の上に描かれる。 */
+    private void drawWall(float px, float py) {
+        batch.draw(sprites.wall, px - TILE / 2f, py - TILE / 2f, TILE, WALL_H);
     }
 
     /** 装飾小物を描く。 */
@@ -1333,10 +1606,14 @@ public class MallScreen implements Screen, InputProcessor {
         batch.draw(tex, px - w / 2f, py - h / 2f, w, h);
     }
 
-    /** 敵を補間位置に描く（ボスは大きく表示する）。向きに合ったスプライトを使う。 */
+    /** 敵を補間位置に描く（ボスは大きく表示する）。向きに合ったスプライトを使う。
+     * 方向ごとの表示サイズを正規化し、足元に柔らかい影を描く。 */
     private void drawCharacter(Enemy e) {
         float px = tileX(e.rx);
         float py = tileY(e.ry);
+        float height = e.isBoss ? 90 : 64;
+        // 影は地面（突進していない位置）に描く
+        sprites.drawShadow(batch, px, py, e.isBoss ? 56 : 40);
         // 攻撃時の突進：攻撃方向へ素早く出て戻る
         if (e.lungeTimer > 0) {
             float progress = 1f - e.lungeTimer / ATTACK_LUNGE_TIME;
@@ -1345,14 +1622,18 @@ public class MallScreen implements Screen, InputProcessor {
             px += d[0] * mag * TILE;
             py += -d[1] * mag * TILE;
         }
-        float height = e.isBoss ? 90 : 64;
-        drawAnchored(sprites.enemyTexture(e.kind, e.facing), px, py, height);
+        sprites.drawCharacter(batch, sprites.enemySpriteName(e.kind, e.facing),
+                px, py, height);
     }
 
-    /** プレイヤーを補間位置に描く（歩行時の上下動と歩行フレームつき）。 */
+    /** プレイヤーを補間位置に描く（歩行時の上下動と歩行フレームつき）。
+     * 方向ごとの表示サイズを正規化し、足元に柔らかい影を描く。 */
     private void drawPlayer(float bob) {
         float px = tileX(playerRx);
-        float py = tileY(playerRy) + bob;
+        float py = tileY(playerRy);
+        // 影は地面（上下動・突進していない位置）に描く
+        sprites.drawShadow(batch, px, py, 40);
+        py += bob;
         // 攻撃時の突進：攻撃方向へ素早く出て戻る
         if (attackLungeTimer > 0) {
             float progress = 1f - attackLungeTimer / ATTACK_LUNGE_TIME;
@@ -1361,7 +1642,8 @@ public class MallScreen implements Screen, InputProcessor {
             px += d[0] * mag * TILE;
             py += -d[1] * mag * TILE;
         }
-        drawAnchored(sprites.heroTexture(playerFacing, walkFrame()), px, py, 64);
+        sprites.drawCharacter(batch,
+                sprites.heroSpriteName(playerFacing, walkFrame()), px, py, 64);
     }
 
     /** フロアタイプごとの床の色調（スプライトの色に掛ける）。 */
