@@ -93,7 +93,7 @@ import java.util.List;
  * - プレイヤーと敵に向き（0=南〜7=南東、時計回り）を持たせ、移動・攻撃した
  *   方向を向く。向きに合った8方向スプライトを描く（ない種類は1枚絵のまま）。
  *   歩行時は移動の補間（約0.12秒）に合わせて歩行フレームを切り替える
- *   （主人公は足を大きく振った2フレームを交互に、敵は上下の跳ね＋向きの切り替え）。
+ *   （主人公は4フレームを1歩で2フレームずつ、敵は上下の跳ね＋向きの切り替え）。
  *   攻撃時は攻撃方向へ素早く突進して戻る＋斬撃エフェクト＋対象のフラッシュ。
  * - 壁は1マス＝1チップで描く（上面と前面を1枚に含む壁チップをタイルごとに
  *   そのまま1枚描くだけ）。面分割（上面・前面バンド・角）はやめた。
@@ -163,6 +163,8 @@ public class MallScreen implements Screen, InputProcessor {
     private float playerRy;
     /** プレイヤーの向き（0=南〜7=南東）。 */
     private int playerFacing = 0;
+    /** 歩数のパリティ（0=1歩目、1=2歩目）。歩行フレームの切り替えに使う。 */
+    private int walkStep = 0;
     /** 今の移動の距離（タイル単位、直進1・斜め√2）。歩行フレームと跳ねの進行度用。 */
     private float moveDist = 0f;
     /** 攻撃時の突進アニメーション（0 なら攻撃中でない）。 */
@@ -282,6 +284,7 @@ public class MallScreen implements Screen, InputProcessor {
         playerRx = playerX;
         playerRy = playerY;
         playerFacing = 0;
+        walkStep = 0;
         moveDist = 0f;
         attackLungeTimer = 0f;
         slashTimer = 0f;
@@ -528,6 +531,7 @@ public class MallScreen implements Screen, InputProcessor {
         moveDist = (float) Math.sqrt(dx * dx + dy * dy);
         playerX = nx;
         playerY = ny;
+        walkStep++;
         turn++;
         updateVisibility();
         pickUpItem();
@@ -1456,7 +1460,8 @@ public class MallScreen implements Screen, InputProcessor {
         return (float) Math.sin(progress * Math.PI) * 3f;
     }
 
-    /** 歩行フレーム（0/1）：移動の補間の前半はフレームA、後半はフレームB。止まっているときは0。 */
+    /** 歩行フレーム（0〜3）：1歩で2フレーム進む。1歩目はフレーム0→1、
+     * 2歩目はフレーム2→3。止まっているときは0。 */
     private int walkFrame() {
         float dx = playerX - playerRx;
         float dy = playerY - playerRy;
@@ -1465,7 +1470,8 @@ public class MallScreen implements Screen, InputProcessor {
             return 0;
         }
         float progress = 1f - dist / moveDist;
-        return progress < 0.5f ? 0 : 1;
+        int base = (walkStep % 2 == 0) ? 0 : 2;
+        return progress < 0.5f ? base : base + 1;
     }
 
     /** 上層の霧：フロア上に霧スプライトのパーティクルを漂わせる（5Fから）。 */

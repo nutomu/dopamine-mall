@@ -32,7 +32,6 @@ public class Sprites {
     public final Texture stairs;
     public final Texture stage;
     public final Texture bench;
-    public final Texture hero;
     public final Texture fog;
     /** 斬撃エフェクト（白い弧）。 */
     public final Texture slash;
@@ -58,7 +57,6 @@ public class Sprites {
         stairs = load("stairs");
         stage = load("stage");
         bench = load("bench");
-        hero = load("hero");
         fog = load("fog");
         slash = load("slash");
         hitstar = load("hitstar");
@@ -123,7 +121,7 @@ public class Sprites {
     }
 
     /** 主人公の向きと歩行フレームに対応するスプライト。
-     * dir は 0=南〜7=南東、frame は 0/1（歩行フレームA/B）。 */
+     * dir は 0=南〜7=南東、frame は 0〜3（1歩で2フレーム進む）。 */
     public Texture heroTexture(int dir, int frame) {
         return cached("hero_d" + dir + "_f" + frame);
     }

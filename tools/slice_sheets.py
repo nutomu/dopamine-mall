@@ -68,21 +68,26 @@ SHEETS8 = [
      480, 160),
 ]
 
-# シレン風見下ろし用の四角いマップチップと、足の振りを大きくした主人公8方向シート
-# （samples/sheets-shiren）。従来の同名スプライト（floor_mall など、hero_d*_f*）
-# を置き換えるため、既存のシートより後に処理する。向きの順番は列0＝南、
-# 1＝南西、2＝西、3＝北西、4＝北、5＝北東、6＝東、7＝南東。
+# 平らな見下ろし用のマップチップと、主人公8方向×4歩行フレーム
+# （samples/sheets-flat）。向きの順番は列0＝南、1＝南西、2＝西、3＝北西、
+# 4＝北、5＝北東、6＝東、7＝南東。4コマ版の行は上から左足前・通過・
+# 右足前・通過。予備の2フレーム版（sheets8 の player8）は品質ゲートで
+# 不良セルを置き換えるためのもの。hero4_/hero2_ は作業用の中間名で、
+# 最終的な hero_d*_f* は別途合成する（tools/compose_hero.py）。
 # (名前, ファイル, 行数, 列数, スプライト名, 最大辺, キー抜きの緑しきい値)
-SHEETS_SHIREN = [
-    ("chips", "media-generation-dopamine-mall-sheet-chips-squa-0-076a1431-cd7a-47ed-a8fb-1b3242fcdce6.webp",
-     3, 4, ["floor_mall", "floor_wood", "floor_carpet", "wall",
-            "bookshelf", "shelf", "counter", "table",
-            "arcade", "escalator", "stairs", "stage"],
+SHEETS_FLAT_DIR = os.path.join(BASE, "samples", "sheets-flat")
+SHEETS_FLAT = [
+    ("chips-flat", "media-generation-dopamine-mall-sheet-chips-flat-0-0250b4fc-1739-4bc7-96fe-87c11f5461a2.webp",
+     3, 5, ["floor_mall", "floor_wood", "floor_carpet", "wall", "bookshelf",
+            "shelf", "counter", "table", "arcade", "escalator",
+            "stairs", "stage", "bench", "vending", "plant"],
      160, 160),
-    ("player8-walk", "media-generation-dopamine-mall-sheet-player8-wa-0-8e42ae3f-fedc-40e2-a057-42805b4e33cc.webp",
-     2, 8, ["hero_d%d_f%d" % (c, r) for r in range(2)
-            for c in [0, 1, 2, 3, 4, 5, 7, 6]],
+    ("player8-walk4", "media-generation-dopamine-mall-sheet-player8-wa-0-0d4b969f-5e85-4aa9-a53d-ba99ad9557c9.webp",
+     4, 8, ["hero4_d%d_f%d" % (c, r) for r in range(4) for c in range(8)],
      160, 160),
+    ("player8-backup", "media-generation-dopamine-mall-sheet-player8-0-68f7a667-4de6-4608-9ee0-6e76cbec1aa9.webp",
+     2, 8, ["hero2_d%d_f%d" % (c, r) for r in range(2) for c in range(8)],
+     160, 160, "sheets8"),
 ]
 
 
@@ -197,23 +202,32 @@ def contact_sheet(all_sprites):
 
 
 def main():
+    import sys
+    only_flat = len(sys.argv) > 1 and sys.argv[1] == "flat"
     os.makedirs(OUT_DIR, exist_ok=True)
     all_sprites = {}
-    for sheet_name, filename, rows, cols, names in SHEETS:
-        print("[%s] %s (%d sprites)" % (sheet_name, filename, len(names)))
-        all_sprites.update(slice_sheet(sheet_name, filename, rows, cols, names))
-    for sheet_name, filename, rows, cols, names, max_dim, key_g in SHEETS8:
+    if not only_flat:
+        for sheet_name, filename, rows, cols, names in SHEETS:
+            print("[%s] %s (%d sprites)" % (sheet_name, filename, len(names)))
+            all_sprites.update(slice_sheet(sheet_name, filename, rows, cols, names))
+        for sheet_name, filename, rows, cols, names, max_dim, key_g in SHEETS8:
+            print("[%s] %s (%d sprites)" % (sheet_name, filename, len(names)))
+            all_sprites.update(slice_sheet(sheet_name, filename, rows, cols, names,
+                                           sheets_dir=SHEETS8_DIR,
+                                           max_dim=max_dim, key_g=key_g,
+                                           key_mode="magenta"))
+    for sheet in SHEETS_FLAT:
+        sheet_name, filename, rows, cols, names, max_dim, key_g = sheet[:7]
+        sdir = os.path.join(BASE, "samples", sheet[7]) if len(sheet) > 7 else SHEETS_FLAT_DIR
         print("[%s] %s (%d sprites)" % (sheet_name, filename, len(names)))
         all_sprites.update(slice_sheet(sheet_name, filename, rows, cols, names,
-                                       sheets_dir=SHEETS8_DIR,
+                                       sheets_dir=sdir,
                                        max_dim=max_dim, key_g=key_g,
                                        key_mode="magenta"))
-    for sheet_name, filename, rows, cols, names, max_dim, key_g in SHEETS_SHIREN:
-        print("[%s] %s (%d sprites)" % (sheet_name, filename, len(names)))
-        all_sprites.update(slice_sheet(sheet_name, filename, rows, cols, names,
-                                       sheets_dir=SHEETS_SHIREN_DIR,
-                                       max_dim=max_dim, key_g=key_g,
-                                       key_mode="magenta"))
+    if only_flat:
+        # flat のみ実行した場合は manifest とコンタクトシートを触らない
+        #（最終的な hero_d*_f* は tools/compose_hero.py で合成する）。
+        return
     manifest = os.path.join(OUT_DIR, "manifest.json")
     with open(manifest, "w") as f:
         json.dump(all_sprites, f, indent=1, sort_keys=True)

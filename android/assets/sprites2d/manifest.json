@@ -52,7 +52,7 @@
  "arcade": {
   "file": "arcade.png",
   "h": 160,
-  "w": 104
+  "w": 126
  },
  "archangel": {
   "file": "archangel.png",
@@ -106,12 +106,12 @@
  },
  "bench": {
   "file": "bench.png",
-  "h": 155,
+  "h": 70,
   "w": 160
  },
  "bookshelf": {
   "file": "bookshelf.png",
-  "h": 158,
+  "h": 139,
   "w": 160
  },
  "cake": {
@@ -123,11 +123,6 @@
   "file": "cart.png",
   "h": 160,
   "w": 136
- },
- "chest": {
-  "file": "chest.png",
-  "h": 160,
-  "w": 152
  },
  "clerk": {
   "file": "clerk.png",
@@ -181,7 +176,7 @@
  },
  "counter": {
   "file": "counter.png",
-  "h": 156,
+  "h": 158,
   "w": 160
  },
  "customer": {
@@ -281,12 +276,12 @@
  },
  "escalator": {
   "file": "escalator.png",
-  "h": 157,
-  "w": 160
+  "h": 160,
+  "w": 110
  },
  "floor_carpet": {
   "file": "floor_carpet.png",
-  "h": 156,
+  "h": 160,
   "w": 160
  },
  "floor_mall": {
@@ -296,7 +291,7 @@
  },
  "floor_wood": {
   "file": "floor_wood.png",
-  "h": 156,
+  "h": 158,
   "w": 160
  },
  "fog": {
@@ -354,90 +349,165 @@
   "h": 160,
   "w": 94
  },
- "hero": {
-  "file": "hero.png",
-  "h": 160,
-  "w": 107
- },
  "hero_d0_f0": {
   "file": "hero_d0_f0.png",
   "h": 160,
-  "w": 103
+  "w": 129
  },
  "hero_d0_f1": {
   "file": "hero_d0_f1.png",
+  "h": 156,
+  "w": 160
+ },
+ "hero_d0_f2": {
+  "file": "hero_d0_f2.png",
   "h": 160,
-  "w": 102
+  "w": 93
+ },
+ "hero_d0_f3": {
+  "file": "hero_d0_f3.png",
+  "h": 160,
+  "w": 130
  },
  "hero_d1_f0": {
   "file": "hero_d1_f0.png",
   "h": 160,
-  "w": 113
+  "w": 97
  },
  "hero_d1_f1": {
   "file": "hero_d1_f1.png",
   "h": 160,
-  "w": 108
+  "w": 102
+ },
+ "hero_d1_f2": {
+  "file": "hero_d1_f2.png",
+  "h": 160,
+  "w": 97
+ },
+ "hero_d1_f3": {
+  "file": "hero_d1_f3.png",
+  "h": 160,
+  "w": 102
  },
  "hero_d2_f0": {
   "file": "hero_d2_f0.png",
   "h": 160,
-  "w": 108
+  "w": 97
  },
  "hero_d2_f1": {
   "file": "hero_d2_f1.png",
   "h": 160,
-  "w": 103
+  "w": 128
+ },
+ "hero_d2_f2": {
+  "file": "hero_d2_f2.png",
+  "h": 160,
+  "w": 98
+ },
+ "hero_d2_f3": {
+  "file": "hero_d2_f3.png",
+  "h": 160,
+  "w": 97
  },
  "hero_d3_f0": {
   "file": "hero_d3_f0.png",
   "h": 160,
-  "w": 105
+  "w": 124
  },
  "hero_d3_f1": {
   "file": "hero_d3_f1.png",
   "h": 160,
-  "w": 104
+  "w": 157
+ },
+ "hero_d3_f2": {
+  "file": "hero_d3_f2.png",
+  "h": 160,
+  "w": 100
+ },
+ "hero_d3_f3": {
+  "file": "hero_d3_f3.png",
+  "h": 160,
+  "w": 118
  },
  "hero_d4_f0": {
   "file": "hero_d4_f0.png",
   "h": 160,
-  "w": 110
+  "w": 118
  },
  "hero_d4_f1": {
   "file": "hero_d4_f1.png",
   "h": 160,
-  "w": 89
+  "w": 117
+ },
+ "hero_d4_f2": {
+  "file": "hero_d4_f2.png",
+  "h": 160,
+  "w": 157
+ },
+ "hero_d4_f3": {
+  "file": "hero_d4_f3.png",
+  "h": 160,
+  "w": 117
  },
  "hero_d5_f0": {
   "file": "hero_d5_f0.png",
   "h": 160,
-  "w": 100
+  "w": 121
  },
  "hero_d5_f1": {
   "file": "hero_d5_f1.png",
   "h": 160,
-  "w": 102
+  "w": 112
+ },
+ "hero_d5_f2": {
+  "file": "hero_d5_f2.png",
+  "h": 160,
+  "w": 156
+ },
+ "hero_d5_f3": {
+  "file": "hero_d5_f3.png",
+  "h": 160,
+  "w": 112
  },
  "hero_d6_f0": {
   "file": "hero_d6_f0.png",
   "h": 160,
-  "w": 102
+  "w": 93
  },
  "hero_d6_f1": {
   "file": "hero_d6_f1.png",
   "h": 160,
-  "w": 120
+  "w": 106
+ },
+ "hero_d6_f2": {
+  "file": "hero_d6_f2.png",
+  "h": 160,
+  "w": 93
+ },
+ "hero_d6_f3": {
+  "file": "hero_d6_f3.png",
+  "h": 160,
+  "w": 106
  },
  "hero_d7_f0": {
   "file": "hero_d7_f0.png",
   "h": 160,
-  "w": 95
+  "w": 94
  },
  "hero_d7_f1": {
   "file": "hero_d7_f1.png",
   "h": 160,
-  "w": 102
+  "w": 104
+ },
+ "hero_d7_f2": {
+  "file": "hero_d7_f2.png",
+  "h": 160,
+  "w": 94
+ },
+ "hero_d7_f3": {
+  "file": "hero_d7_f3.png",
+  "h": 160,
+  "w": 104
  },
  "hitstar": {
   "file": "hitstar.png",
@@ -487,7 +557,7 @@
  "plant": {
   "file": "plant.png",
   "h": 160,
-  "w": 114
+  "w": 134
  },
  "rabbit": {
   "file": "rabbit.png",
@@ -496,7 +566,7 @@
  },
  "shelf": {
   "file": "shelf.png",
-  "h": 135,
+  "h": 158,
   "w": 160
  },
  "sign": {
@@ -511,17 +581,17 @@
  },
  "stage": {
   "file": "stage.png",
-  "h": 100,
+  "h": 115,
   "w": 160
  },
  "stairs": {
   "file": "stairs.png",
-  "h": 158,
-  "w": 160
+  "h": 160,
+  "w": 136
  },
  "table": {
   "file": "table.png",
-  "h": 86,
+  "h": 96,
   "w": 160
  },
  "trash": {
@@ -542,12 +612,12 @@
  "vending": {
   "file": "vending.png",
   "h": 160,
-  "w": 91
+  "w": 141
  },
  "wall": {
   "file": "wall.png",
   "h": 160,
-  "w": 160
+  "w": 159
  },
  "yeti": {
   "file": "yeti.png",
