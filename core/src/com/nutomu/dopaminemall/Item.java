@@ -63,6 +63,11 @@ public class Item {
             this.g = g;
             this.b = b;
         }
+
+        /** 現在の言語での表示名。 */
+        public String label() {
+            return Localization.isJapanese() ? japaneseName : displayName;
+        }
     }
 
     public final Kind kind;

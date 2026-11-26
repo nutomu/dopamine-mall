@@ -17,6 +17,7 @@ dependencies {
     implementation project(':core')
     api "com.badlogicgames.gdx:gdx-backend-lwjgl3:$gdxVersion"
     api "com.badlogicgames.gdx:gdx-platform:$gdxVersion:natives-desktop"
+    api "com.badlogicgames.gdx:gdx-freetype-platform:$gdxVersion:natives-desktop"
 }
 
 // 実行可能 fat jar（dopamine-mall-desktop.jar）を作る

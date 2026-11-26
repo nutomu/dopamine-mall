@@ -20,36 +20,38 @@ public class Enemy {
     /** 敵の種類。 */
     public enum Kind {
         /** 客：HP8／攻撃3、ピンク色、記号 'c'。 */
-        CUSTOMER("客", 'c', 8, 3, 1.0f, 0.55f, 0.75f),
+        CUSTOMER("客", "Customer", 'c', 8, 3, 1.0f, 0.55f, 0.75f),
         /** 店員：HP14／攻撃5、オレンジ色、記号 's'。 */
-        CLERK("店員", 's', 14, 5, 1.0f, 0.55f, 0.2f),
+        CLERK("店員", "Clerk", 's', 14, 5, 1.0f, 0.55f, 0.2f),
         /** 警備員：HP24／攻撃8、赤色、記号 'G'。 */
-        GUARD("警備員", 'G', 24, 8, 0.9f, 0.15f, 0.15f),
+        GUARD("警備員", "Guard", 'G', 24, 8, 0.9f, 0.15f, 0.15f),
         /** クマの着ぐるみ：HP22／攻撃7、茶色、記号 'b'（5〜9階）。 */
-        BEAR_MASCOT("クマの着ぐるみ", 'b', 22, 7, 0.6f, 0.4f, 0.2f),
+        BEAR_MASCOT("クマの着ぐるみ", "Bear Mascot", 'b', 22, 7, 0.6f, 0.4f, 0.2f),
         /** ウサギの着ぐるみ：HP16／攻撃6、白っぽいピンク、記号 'r'（5〜9階）。 */
-        RABBIT_MASCOT("ウサギの着ぐるみ", 'r', 16, 6, 0.95f, 0.85f, 0.9f),
+        RABBIT_MASCOT("ウサギの着ぐるみ", "Rabbit Mascot", 'r', 16, 6, 0.95f, 0.85f, 0.9f),
         /** 逃げ出した犬：HP18／攻撃8、黄土色、記号 'd'（5〜9階）。 */
-        ESCAPED_DOG("逃げ出した犬", 'd', 18, 8, 0.8f, 0.65f, 0.35f),
+        ESCAPED_DOG("逃げ出した犬", "Escaped Dog", 'd', 18, 8, 0.8f, 0.65f, 0.35f),
         /** 逃げ出したサル：HP14／攻撃7、赤茶色、記号 'm'（5〜9階）。 */
-        ESCAPED_MONKEY("逃げ出したサル", 'm', 14, 7, 0.75f, 0.55f, 0.3f),
+        ESCAPED_MONKEY("逃げ出したサル", "Escaped Monkey", 'm', 14, 7, 0.75f, 0.55f, 0.3f),
         /** ツチノコ：HP30／攻撃11、緑色、記号 't'（10〜14階）。 */
-        TSUCHINOKO("ツチノコ", 't', 30, 11, 0.3f, 0.8f, 0.3f),
+        TSUCHINOKO("ツチノコ", "Tsuchinoko", 't', 30, 11, 0.3f, 0.8f, 0.3f),
         /** 雪男：HP38／攻撃13、白っぽい水色、記号 'Y'（10〜14階）。 */
-        YETI("雪男", 'Y', 38, 13, 0.85f, 0.9f, 0.95f),
+        YETI("雪男", "Yeti", 'Y', 38, 13, 0.85f, 0.9f, 0.95f),
         /** 天使：HP48／攻撃16、金色、記号 'A'（15階以上）。 */
-        ANGEL("天使", 'A', 48, 16, 1.0f, 0.9f, 0.5f),
+        ANGEL("天使", "Angel", 'A', 48, 16, 1.0f, 0.9f, 0.5f),
         /** 獅子の神：HP60／攻撃20、濃い金色、記号 'L'（15階以上）。 */
-        LION_GOD("獅子の神", 'L', 60, 20, 0.9f, 0.7f, 0.2f),
+        LION_GOD("獅子の神", "Lion God", 'L', 60, 20, 0.9f, 0.7f, 0.2f),
         /** 店長：5Fのボス。基準は店員相当、記号 'B'、紫色。 */
-        MANAGER("店長", 'B', 14, 5, 0.7f, 0.3f, 0.8f),
+        MANAGER("店長", "Manager", 'B', 14, 5, 0.7f, 0.3f, 0.8f),
         /** 巨大着ぐるみ：10Fのボス。基準はクマの着ぐるみ相当、記号 'B'、橙色。 */
-        GIANT_MASCOT("巨大着ぐるみ", 'B', 22, 7, 0.9f, 0.5f, 0.1f),
+        GIANT_MASCOT("巨大着ぐるみ", "Giant Mascot", 'B', 22, 7, 0.9f, 0.5f, 0.1f),
         /** 大天使：15F以上のボス。基準は天使相当、記号 'B'、明るい金色。 */
-        ARCHANGEL("大天使", 'B', 48, 16, 1.0f, 0.95f, 0.3f);
+        ARCHANGEL("大天使", "Archangel", 'B', 48, 16, 1.0f, 0.95f, 0.3f);
 
         /** 日本語名（仕様上の名称）。 */
         public final String japaneseName;
+        /** 英語名。 */
+        public final String englishName;
         /** 表示記号（デフォルトフォントは ASCII のみのため英字）。 */
         public final char symbol;
         /** 基準 HP。 */
@@ -60,15 +62,21 @@ public class Enemy {
         public final float g;
         public final float b;
 
-        Kind(String japaneseName, char symbol, int baseHp, int baseAttack,
+        Kind(String japaneseName, String englishName, char symbol, int baseHp, int baseAttack,
              float r, float g, float b) {
             this.japaneseName = japaneseName;
+            this.englishName = englishName;
             this.symbol = symbol;
             this.baseHp = baseHp;
             this.baseAttack = baseAttack;
             this.r = r;
             this.g = g;
             this.b = b;
+        }
+
+        /** 現在の言語での表示名。 */
+        public String label() {
+            return Localization.isJapanese() ? japaneseName : englishName;
         }
     }
 
@@ -117,8 +125,20 @@ public class Enemy {
         return damage;
     }
 
-    /** 階数に応じた階層テーマ名（HUD 表示用、英字）。 */
+    /** 階数に応じた階層テーマ名（HUD 表示用）。現在の言語で返す。 */
     public static String themeName(int floorNumber) {
+        if (Localization.isJapanese()) {
+            if (floorNumber <= 4) {
+                return "下層モール";
+            }
+            if (floorNumber <= 9) {
+                return "着ぐるみ・動物";
+            }
+            if (floorNumber <= 14) {
+                return "UMA";
+            }
+            return "天界";
+        }
         if (floorNumber <= 4) {
             return "LOWER MALL";
         }

@@ -8,6 +8,7 @@ import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.graphics.GL20;
 import com.badlogic.gdx.graphics.OrthographicCamera;
 import com.badlogic.gdx.graphics.g2d.BitmapFont;
+import com.badlogic.gdx.graphics.g2d.GlyphLayout;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
 import com.badlogic.gdx.graphics.glutils.ShapeRenderer;
 import com.badlogic.gdx.math.Vector3;
@@ -49,6 +50,14 @@ import java.util.List;
  *   入るとメッセージで知らせる。中の敵は視界ルール通り、入るまで見えない。
  * ※ グラフィックスは色分けしたタイルのシンプルな表示（凝った表現は M6 で行う）。
  * ※ HUD の文字はデフォルトフォントが ASCII のみのため英字表記。
+ * 言語対応（英語・日本語）。
+ * - 表示文字列はすべて Localization クラス（翻訳テーブル）で管理する。
+ * - 起動時は端末の言語設定で自動判定し（日本語なら日本語、それ以外は英語）、
+ *   タイトル画面で L キーを押すと切り替えられる。切り替えた言語は
+ *   Preferences に保存され、次回起動時も維持される。
+ * - 日本語表示のときは Noto Sans JP のサブセットフォントを gdx-freetype で
+ *   読み込む。英語表示のときは従来のデフォルトフォントのまま。
+ * - タイトル画面とゲームオーバー画面の文字は中央揃えで描く（日本語でも崩れない）。
  * M6：音楽・演出・グラフィックスのテスト実装。
  * - BGM：生成チップチューンの WAV ループを3曲（タイトル／ダンジョン／ボス）。
  *   タイトル画面ではタイトル曲、ダンジョンでは環境音楽、ボスフロアと
@@ -82,6 +91,8 @@ public class MallScreen implements Screen, InputProcessor {
     private SpriteBatch batch;
     private BitmapFont font;
     private BitmapFont hudFont;
+    /** 中央揃えで文字を描くためのレイアウト（タイトル画面・ゲームオーバー用）。 */
+    private final GlyphLayout layout = new GlyphLayout();
 
     private Floor floor;
     private int playerX;
@@ -150,10 +161,11 @@ public class MallScreen implements Screen, InputProcessor {
         viewport = new FitViewport(VIEW_W, VIEW_H, camera);
         shapes = new ShapeRenderer();
         batch = new SpriteBatch();
-        font = new BitmapFont();
-        font.getData().setScale(2f);
-        hudFont = new BitmapFont();
-        hudFont.getData().setScale(1.5f);
+        // 言語設定を読み込み、現在の言語に合わせたフォントを用意する。
+        Localization.init();
+        Fonts.load();
+        font = Fonts.font;
+        hudFont = Fonts.hudFont;
         loadFloor();
         music.load();
         music.playTitle();
@@ -319,7 +331,7 @@ public class MallScreen implements Screen, InputProcessor {
             attackFlashX = nx;
             attackFlashY = ny;
             if (target.isAlive()) {
-                message = "Attacked " + target.kind.name() + " for " + damage + " dmg!";
+                message = Localization.t("msg.attacked", target.kind.label(), damage);
             } else {
                 spawnDeathParticles(target);
                 enemies.remove(target);
@@ -328,11 +340,11 @@ public class MallScreen implements Screen, InputProcessor {
                     Item.Kind[] loot = {Item.Kind.FRYING_PAN, Item.Kind.JACKET, Item.Kind.SWEETS};
                     Item.Kind drop = loot[(int) (Math.random() * loot.length)];
                     items.add(new Item(drop, target.x, target.y));
-                    message = "Defeated BOSS " + target.kind.name() + "! It dropped "
-                            + drop.displayName + "!";
+                    message = Localization.t("msg.defeated_boss",
+                            target.kind.label(), drop.label());
                     updateMusic();
                 } else {
-                    message = "Defeated " + target.kind.name() + "!";
+                    message = Localization.t("msg.defeated", target.kind.label());
                     // モンスターハウスの中の敵を倒しきったらボス曲から戻る。
                     if (monsterHouseMusic && !monsterHouseHasEnemies()) {
                         monsterHouseMusic = false;
@@ -377,7 +389,7 @@ public class MallScreen implements Screen, InputProcessor {
         if (playerX >= floor.mhX0 && playerX <= floor.mhX1
                 && playerY >= floor.mhY0 && playerY <= floor.mhY1) {
             monsterHouseAnnounced = true;
-            message = "Monster house! Enemies everywhere!";
+            message = Localization.t("msg.monster_house");
             // モンスターハウスに入ったらボス曲に切り替わる。
             monsterHouseMusic = true;
             updateMusic();
@@ -394,12 +406,12 @@ public class MallScreen implements Screen, InputProcessor {
             return;
         }
         if (inventory.size() >= MAX_INVENTORY) {
-            message = "Inventory is full! Cannot pick up " + it.kind.displayName + ".";
+            message = Localization.t("msg.inv_full_pickup", it.kind.label());
             return;
         }
         items.remove(it);
         inventory.add(it);
-        message = "Picked up " + it.kind.displayName + "!";
+        message = Localization.t("msg.picked_up", it.kind.label());
     }
 
     /**
@@ -417,8 +429,7 @@ public class MallScreen implements Screen, InputProcessor {
             int before = playerHp;
             playerHp = Math.min(PLAYER_MAX_HP, playerHp + it.kind.heal);
             inventory.remove(index);
-            message = "Used " + it.kind.displayName + "! Recovered "
-                    + (playerHp - before) + " HP!";
+            message = Localization.t("msg.used", it.kind.label(), playerHp - before);
             turn++;
             enemyTurn();
             return;
@@ -427,7 +438,7 @@ public class MallScreen implements Screen, InputProcessor {
         boolean isWeapon = it.kind.type == Item.Type.WEAPON;
         Item current = isWeapon ? equippedWeapon : equippedArmor;
         if (current != null && inventory.size() >= MAX_INVENTORY) {
-            message = "Inventory is full! Cannot swap equipment.";
+            message = Localization.t("msg.inv_full_swap");
             return;
         }
         inventory.remove(index);
@@ -439,7 +450,7 @@ public class MallScreen implements Screen, InputProcessor {
         } else {
             equippedArmor = it;
         }
-        message = "Equipped " + it.kind.displayName + "!";
+        message = Localization.t("msg.equipped", it.kind.label());
         turn++;
         enemyTurn();
     }
@@ -473,11 +484,11 @@ public class MallScreen implements Screen, InputProcessor {
                 int damage = Math.max(1, e.attack - playerDefense());
                 playerHp -= damage;
                 flash(1f, 0.2f, 0.2f);
-                message = e.kind.name() + " hit you for " + damage + " dmg!";
+                message = Localization.t("msg.hit_by", e.kind.label(), damage);
                 if (playerHp <= 0) {
                     playerHp = 0;
                     gameOver = true;
-                    message = "GAME OVER...";
+                    message = Localization.t("msg.game_over");
                 }
                 continue;
             }
@@ -621,8 +632,15 @@ public class MallScreen implements Screen, InputProcessor {
 
     @Override
     public boolean keyDown(int keycode) {
-        // タイトル画面：Enterキーなどでゲーム開始する。
+        // タイトル画面：Enterキーなどでゲーム開始する。Lキーで言語を切り替える。
         if (titleScreen) {
+            if (keycode == Input.Keys.L) {
+                Localization.toggleLanguage();
+                Fonts.reload();
+                font = Fonts.font;
+                hudFont = Fonts.hudFont;
+                return true;
+            }
             if (keycode == Input.Keys.ENTER || keycode == Input.Keys.CENTER
                     || keycode == Input.Keys.BUTTON_A || keycode == Input.Keys.SPACE
                     || keycode == Input.Keys.BUTTON_START) {
@@ -695,7 +713,7 @@ public class MallScreen implements Screen, InputProcessor {
                 return true;
             case Input.Keys.N:
                 music.setMuted(!music.isMuted());
-                message = music.isMuted() ? "Music: OFF" : "Music: ON";
+                message = Localization.t(music.isMuted() ? "hud.music_off" : "hud.music_on");
                 return true;
             case Input.Keys.I:
             case Input.Keys.BUTTON_START:
@@ -944,7 +962,7 @@ public class MallScreen implements Screen, InputProcessor {
         }
     }
 
-    /** タイトル画面。Enterキー／タップでゲーム開始する。 */
+    /** タイトル画面。Enterキー／タップでゲーム開始する。Lキーで言語を切り替える。 */
     private void drawTitle() {
         float cx = camera.position.x;
         float cy = camera.position.y;
@@ -965,17 +983,22 @@ public class MallScreen implements Screen, InputProcessor {
         font.setColor(Color.BLACK);
         font.draw(batch, "MALL", cx - 55, cy + 135);
         font.setColor(Color.YELLOW);
-        font.draw(batch, "DOPAMINE MALL", cx - 140, cy + 20);
+        drawCentered(font, "DOPAMINE MALL", cx, cy + 20);
         hudFont.setColor(Color.WHITE);
-        hudFont.draw(batch, "An endless shopping mall dungeon roguelike",
-                cx - 260, cy - 20);
-        hudFont.draw(batch, "PRESS ENTER TO START", cx - 145, cy - 70);
+        drawCentered(hudFont, Localization.t("title.subtitle"), cx, cy - 20);
+        drawCentered(hudFont, Localization.t("title.press_start"), cx, cy - 70);
         hudFont.setColor(Color.LIGHT_GRAY);
-        hudFont.draw(batch, "Move: Arrow keys / WASD   [M] MAP   [I] ITEMS   [N] MUSIC",
-                cx - 300, cy - 110);
-        hudFont.draw(batch, "Gamepad / Fire TV remote: D-pad to move, START items, A start",
-                cx - 300, cy - 140);
+        drawCentered(hudFont, Localization.t("title.keys1"), cx, cy - 110);
+        drawCentered(hudFont, Localization.t("title.keys2"), cx, cy - 140);
+        hudFont.setColor(Color.CYAN);
+        drawCentered(hudFont, Localization.t("title.language"), cx, cy - 180);
         batch.end();
+    }
+
+    /** テキストを横方向の中央揃えで描く（タイトル画面・ゲームオーバー用）。 */
+    private void drawCentered(BitmapFont f, String text, float cx, float y) {
+        layout.setText(f, text);
+        f.draw(batch, text, cx - layout.width / 2f, y);
     }
 
     private void drawTile(int x, int y) {
@@ -1061,20 +1084,25 @@ public class MallScreen implements Screen, InputProcessor {
         batch.setProjectionMatrix(camera.combined);
         batch.begin();
         hudFont.setColor(Color.WHITE);
-        String bossMark = isBossFloor ? "  !! BOSS FLOOR !!" : "";
-        hudFont.draw(batch, "DOPAMINE MALL  " + floorNumber + "F  -  " + floor.type.displayName
+        String bossMark = isBossFloor ? "  " + Localization.t("hud.boss_floor") : "";
+        hudFont.draw(batch, Localization.t("hud.game_name") + "  "
+                        + Localization.t("hud.floor", floorNumber)
+                        + "  -  " + floor.type.label()
                         + "  [" + Enemy.themeName(floorNumber) + "]" + bossMark,
                 leftX + 12, topY - 22);
         hudFont.draw(batch, "HP " + playerHp + "/" + PLAYER_MAX_HP
-                        + "   ATK " + playerAttack() + "   DEF " + playerDefense()
-                        + "   WPN " + (equippedWeapon != null ? equippedWeapon.kind.displayName : "-")
-                        + "   ARM " + (equippedArmor != null ? equippedArmor.kind.displayName : "-"),
+                        + "   " + Localization.t("hud.atk") + " " + playerAttack()
+                        + "   " + Localization.t("hud.def") + " " + playerDefense()
+                        + "   " + Localization.t("hud.wpn") + " "
+                        + (equippedWeapon != null ? equippedWeapon.kind.label() : "-")
+                        + "   " + Localization.t("hud.arm") + " "
+                        + (equippedArmor != null ? equippedArmor.kind.label() : "-"),
                 leftX + 12, topY - 50);
-        hudFont.draw(batch, "TURN " + turn + "   [M] MAP   [I]/[START] ITEMS   [N] MUSIC   [SPACE] WAIT",
+        hudFont.draw(batch, Localization.t("hud.turn", turn) + "   " + Localization.t("hud.keys"),
                 leftX + 12, topY - 78);
         if (!announcement.isEmpty()) {
             hudFont.setColor(Color.CYAN);
-            hudFont.draw(batch, "PA: " + announcement, leftX + 12, topY - 106);
+            hudFont.draw(batch, Localization.t("hud.pa") + announcement, leftX + 12, topY - 106);
         }
         if (!message.isEmpty()) {
             hudFont.setColor(Color.YELLOW);
@@ -1089,7 +1117,10 @@ public class MallScreen implements Screen, InputProcessor {
         float cy = camera.position.y;
         float panelW = 700;
         float lineH = 30;
-        int rows = inventory.size() + 4;
+        // 日本語ではキー案内が2行になるため、その分だけ行数を増やす。
+        String hint1 = Localization.t("inv.hint1");
+        String hint2 = Localization.t("inv.hint2");
+        int rows = inventory.size() + 4 + (hint2.isEmpty() ? 0 : 1);
         float panelH = 30 + rows * lineH + 16;
         float x0 = cx - panelW / 2f;
         float y0 = cy + panelH / 2f;
@@ -1101,7 +1132,7 @@ public class MallScreen implements Screen, InputProcessor {
         shapes.rect(x0, y0 - panelH, panelW, panelH);
         // 選んでいる項目のハイライト（項目行の背景を薄い黄色にする）。
         if (!inventory.isEmpty()) {
-            float selBaseline = y0 - 26 - (3 + selectedItem) * lineH;
+            float selBaseline = y0 - 26 - (3 + (hint2.isEmpty() ? 0 : 1) + selectedItem) * lineH;
             shapes.setColor(1f, 0.85f, 0.2f, 0.25f);
             shapes.rect(x0 + 8, selBaseline - 21, panelW - 16, lineH);
         }
@@ -1112,48 +1143,55 @@ public class MallScreen implements Screen, InputProcessor {
         batch.begin();
         float ty = y0 - 26;
         hudFont.setColor(Color.YELLOW);
-        hudFont.draw(batch, "ITEMS  (" + inventory.size() + "/" + MAX_INVENTORY + ")",
+        hudFont.draw(batch, Localization.t("inv.title", inventory.size(), MAX_INVENTORY),
                 x0 + 16, ty);
         ty -= lineH;
         hudFont.setColor(Color.WHITE);
-        hudFont.draw(batch, "WPN: " + (equippedWeapon != null
-                        ? equippedWeapon.kind.displayName + " (ATK+"
-                        + equippedWeapon.kind.attackBonus + ")" : "-")
-                        + "    ARM: " + (equippedArmor != null
-                        ? equippedArmor.kind.displayName + " (DEF+"
-                        + equippedArmor.kind.defenseBonus + ")" : "-"),
+        String wpn = equippedWeapon != null
+                ? equippedWeapon.kind.label() + " ("
+                + Localization.t("inv.atk", equippedWeapon.kind.attackBonus) + ")"
+                : "-";
+        String arm = equippedArmor != null
+                ? equippedArmor.kind.label() + " ("
+                + Localization.t("inv.def", equippedArmor.kind.defenseBonus) + ")"
+                : "-";
+        hudFont.draw(batch, Localization.t("hud.wpn") + ": " + wpn
+                        + "    " + Localization.t("hud.arm") + ": " + arm,
                 x0 + 16, ty);
         ty -= lineH;
         hudFont.setColor(Color.LIGHT_GRAY);
-        hudFont.draw(batch, "D-pad: select  [A] use  [B] close  /  1-0: use  [I] close",
-                x0 + 16, ty);
+        hudFont.draw(batch, hint1, x0 + 16, ty);
+        if (!hint2.isEmpty()) {
+            ty -= lineH;
+            hudFont.draw(batch, hint2, x0 + 16, ty);
+        }
         for (int i = 0; i < inventory.size(); i++) {
             ty -= lineH;
             Item it = inventory.get(i);
             String desc;
             if (it.kind.type == Item.Type.CONSUMABLE) {
-                desc = "Heal +" + it.kind.heal;
+                desc = Localization.t("inv.heal", it.kind.heal);
             } else if (it.kind.type == Item.Type.WEAPON) {
-                desc = "ATK +" + it.kind.attackBonus;
+                desc = Localization.t("inv.atk", it.kind.attackBonus);
             } else {
-                desc = "DEF +" + it.kind.defenseBonus;
+                desc = Localization.t("inv.def", it.kind.defenseBonus);
             }
             if (i == selectedItem) {
                 hudFont.setColor(Color.YELLOW);
                 hudFont.draw(batch, "> " + (i + 1) % 10 + ". " + it.kind.symbol + " "
-                                + it.kind.displayName + "  -  " + desc,
+                                + it.kind.label() + "  -  " + desc,
                         x0 + 16, ty);
             } else {
                 hudFont.setColor(Color.WHITE);
                 hudFont.draw(batch, "  " + (i + 1) % 10 + ". " + it.kind.symbol + " "
-                                + it.kind.displayName + "  -  " + desc,
+                                + it.kind.label() + "  -  " + desc,
                         x0 + 16, ty);
             }
         }
         if (inventory.isEmpty()) {
             ty -= lineH;
             hudFont.setColor(Color.LIGHT_GRAY);
-            hudFont.draw(batch, "(empty)", x0 + 16, ty);
+            hudFont.draw(batch, Localization.t("inv.empty"), x0 + 16, ty);
         }
         batch.end();
     }
@@ -1173,11 +1211,10 @@ public class MallScreen implements Screen, InputProcessor {
         batch.setProjectionMatrix(camera.combined);
         batch.begin();
         font.setColor(Color.RED);
-        font.draw(batch, "GAME OVER", cx - 130, cy + 40);
+        drawCentered(font, Localization.t("over.title"), cx, cy + 40);
         hudFont.setColor(Color.WHITE);
-        hudFont.draw(batch, "You reached " + floorNumber + "F  /  TURN " + turn,
-                cx - 170, cy - 10);
-        hudFont.draw(batch, "PRESS ENTER TO RETRY", cx - 170, cy - 50);
+        drawCentered(hudFont, Localization.t("over.reached", floorNumber, turn), cx, cy - 10);
+        drawCentered(hudFont, Localization.t("over.retry"), cx, cy - 50);
         batch.end();
     }
 
@@ -1254,7 +1291,6 @@ public class MallScreen implements Screen, InputProcessor {
         music.dispose();
         shapes.dispose();
         batch.dispose();
-        font.dispose();
-        hudFont.dispose();
+        Fonts.dispose();
     }
 }

@@ -17,4 +17,9 @@ public enum FloorType {
         this.japaneseName = japaneseName;
         this.displayName = displayName;
     }
+
+    /** 現在の言語での表示名。 */
+    public String label() {
+        return Localization.isJapanese() ? japaneseName : displayName;
+    }
 }
