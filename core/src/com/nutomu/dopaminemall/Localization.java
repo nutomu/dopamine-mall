@@ -41,8 +41,8 @@ public final class Localization {
                 "PRESS ENTER TO START",
                 "エンターキーではじめる");
         put("title.keys1",
-                "Move: Arrow keys / WASD   [M] MAP   [I] ITEMS   [N] MUSIC",
-                "移動：矢印キー／WASD  [M]マップ  [I]持ち物  [N]音楽");
+                "Move: Arrow keys / WASD  (+Q/E/Z/C: diagonals)   [M] MAP   [I] ITEMS   [N] MUSIC",
+                "移動：矢印キー／WASD（＋Q/E/Z/C：ななめ）  [M]マップ  [I]持ち物  [N]音楽");
         put("title.keys2",
                 "Gamepad / Fire TV remote: D-pad to move, START items, A start",
                 "ゲームパッド／Fire TVリモコン：十字キーで移動、STARTで持ち物、Aではじめる");
@@ -58,8 +58,8 @@ public final class Localization {
         put("hud.arm", "ARM", "防具");
         put("hud.turn", "TURN %d", "ターン %d");
         put("hud.keys",
-                "[M] MAP   [I]/[START] ITEMS   [N] MUSIC   [SPACE] WAIT",
-                "[M]マップ   [I]/[START]持ち物   [N]音楽   [SPACE]待機");
+                "[M] MAP   [I]/[START] ITEMS   [N] MUSIC   [SPACE] WAIT   [Q/E/Z/C] DIAG",
+                "[M]マップ   [I]/[START]持ち物   [N]音楽   [SPACE]待機   [Q/E/Z/C]ななめ");
         put("hud.boss_floor", "!! BOSS FLOOR !!", "！！ボスフロア！！");
         put("hud.pa", "PA: ", "放送：");
         put("hud.music_on", "Music: ON", "音楽：オン");

@@ -34,6 +34,16 @@ public class Sprites {
     public final Texture bench;
     public final Texture hero;
     public final Texture fog;
+    /** 壁の上面ダイヤ（継ぎ目なく並べる）。 */
+    public final Texture wallTop;
+    /** 壁の前面バンド（壁の並びの南側の縁に帯状に描く）。 */
+    public final Texture wallBand;
+    /** 壁の角（南側の角タイル用）。 */
+    public final Texture wallCorner;
+    /** 斬撃エフェクト（白い弧）。 */
+    public final Texture slash;
+    /** ヒット時の星エフェクト。 */
+    public final Texture hitstar;
 
     /** 装飾用の小物の種類。 */
     public enum Prop {
@@ -56,6 +66,11 @@ public class Sprites {
         bench = load("bench");
         hero = load("hero");
         fog = load("fog");
+        wallTop = load("wall_top");
+        wallBand = load("wall_band");
+        wallCorner = load("wall_corner");
+        slash = load("slash");
+        hitstar = load("hitstar");
     }
 
     private Texture load(String name) {
@@ -114,6 +129,33 @@ public class Sprites {
             cache.put(name, t);
         }
         return t;
+    }
+
+    /** 主人公の向きと歩行フレームに対応するスプライト。
+     * dir は 0=南〜7=南東、frame は 0/1（歩行フレームA/B）。 */
+    public Texture heroTexture(int dir, int frame) {
+        return cached("hero_d" + dir + "_f" + frame);
+    }
+
+    /** 敵の種類と向きに対応するスプライト。8方向シートがない種類は
+     * 従来の1枚絵をそのまま使う（向きは変わらない）。 */
+    public Texture enemyTexture(Enemy.Kind kind, int dir) {
+        switch (kind) {
+            case CUSTOMER:
+                return cached("customer_" + dir);
+            case CLERK:
+                return cached("clerk_" + dir);
+            case GUARD:
+                return cached("guard_" + dir);
+            case BEAR_MASCOT:
+                return cached("bear_" + dir);
+            case ESCAPED_DOG:
+                return cached("dog_" + dir);
+            case ANGEL:
+                return cached("angel_" + dir);
+            default:
+                return enemyTexture(kind);
+        }
     }
 
     /** 敵の種類に対応するスプライト。 */

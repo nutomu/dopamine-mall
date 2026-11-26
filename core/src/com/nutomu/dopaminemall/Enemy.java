@@ -86,6 +86,12 @@ public class Enemy {
     /** 描画用の補間位置（タイル単位）。移動アニメーションで目標タイルへ滑らかに寄る。 */
     public float rx;
     public float ry;
+    /** 向き（0=南、1=南西、2=西、3=北西、4=北、5=北東、6=東、7=南東）。 */
+    public int facing = 0;
+    /** 攻撃時の突進アニメーション（0 なら攻撃中でない）。 */
+    public float lungeTimer = 0f;
+    /** 突進する方向（向き 0〜7）。 */
+    public int lungeDir = 0;
     public int hp;
     public final int maxHp;
     public final int attack;

@@ -20,6 +20,7 @@ from scipy import ndimage
 
 BASE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SHEETS_DIR = os.path.join(BASE, "samples", "sheets")
+SHEETS8_DIR = os.path.join(BASE, "samples", "sheets8")
 OUT_DIR = os.path.join(BASE, "android", "assets", "sprites2d")
 
 PAD = 2       # 切り詰め時の余白
@@ -43,14 +44,46 @@ SHEETS = [
             "sign", "bench", "lamp", "fog", "coins"]),
 ]
 
+# 8方向シート（samples/sheets8）。向きの順番は列0＝南、1＝南西、2＝西、3＝北西、
+# 4＝北、5＝北東、6＝東、7＝南東。主人公は2行が歩行フレームA／B。
+# (名前, ファイル, 行数, 列数, スプライト名, 最大辺, キー抜きの緑しきい値)
+SHEETS8 = [
+    ("player8", "media-generation-dopamine-mall-sheet-player8-0-68f7a667-4de6-4608-9ee0-6e76cbec1aa9.webp",
+     2, 8, ["hero_d%d_f%d" % (c, r) for r in range(2) for c in range(8)],
+     160, 160),
+    ("enemies8-l", "media-generation-dopamine-mall-sheet-enemies8-l-0-9a2fbddc-9bd8-48f4-8933-c5ccaa604241.webp",
+     3, 8, ["customer_%d" % c for c in range(8)]
+            + ["clerk_%d" % c for c in range(8)]
+            + ["guard_%d" % c for c in range(8)],
+     160, 160),
+    ("enemies8-m", "media-generation-dopamine-mall-sheet-enemies8-m-0-90c4602f-4ffb-4d7d-8dff-10c7f01c4e51.webp",
+     3, 8, ["bear_%d" % c for c in range(8)]
+            + ["dog_%d" % c for c in range(8)]
+            + ["angel_%d" % c for c in range(8)],
+     160, 160),
+    ("walls-fx", "media-generation-dopamine-mall-sheet-walls-fx-0-bd19006c-938b-4157-b428-76da0827dd67.webp",
+     2, 3, ["wall_top", "wall_band", "wall_corner",
+            "slash", "hitstar", "door"],
+     480, 160),
+]
+
 
 def is_bg_arr(arr):
     """RGB 配列から背景（マゼンタ系）マスクを作る。"""
     return (arr[:, :, 0] > 200) & (arr[:, :, 1] < 120) & (arr[:, :, 2] > 200)
 
 
-def slice_sheet(sheet_name, filename, rows, cols, names):
-    path = os.path.join(SHEETS_DIR, filename)
+def is_magenta_pixel(r, g, b, key_g):
+    """背景（マゼンタ系）かどうか。白とマゼンタの混色によるピンクの
+    フリンジ（r・b が高く g が低い）も背景とみなす。ただしピンク系の
+    スプライト色（バッグなど）は b-g が小さいため残る。"""
+    return r > 150 and b > 150 and (r - g) > 60 and (b - g) > 60
+
+
+def slice_sheet(sheet_name, filename, rows, cols, names,
+                sheets_dir=None, max_dim=MAX_DIM, key_g=120,
+                key_mode="strict"):
+    path = os.path.join(sheets_dir or SHEETS_DIR, filename)
     im = Image.open(path).convert("RGB")
     arr = np.asarray(im)
     fg = ~is_bg_arr(arr)
@@ -93,14 +126,18 @@ def slice_sheet(sheet_name, filename, rows, cols, names):
             for yy in range(ch):
                 for xx in range(cw):
                     r, g, b, a = data[xx, yy]
-                    if r > 200 and g < 120 and b > 200:
+                    if key_mode == "magenta":
+                        bg = is_magenta_pixel(r, g, b, key_g)
+                    else:
+                        bg = r > 200 and g < key_g and b > 200
+                    if bg:
                         data[xx, yy] = (0, 0, 0, 0)
             # 余白を足す（cell は既に外接矩形）
             padded = Image.new("RGBA", (cw + 2 * PAD, ch + 2 * PAD), (0, 0, 0, 0))
             padded.paste(cell, (PAD, PAD))
             # 大きすぎるスプライトは縮小する（描画時の 2〜2.5 倍あれば十分）
-            if max(padded.size) > MAX_DIM:
-                scale = MAX_DIM / max(padded.size)
+            if max(padded.size) > max_dim:
+                scale = max_dim / max(padded.size)
                 nw = max(1, round(padded.size[0] * scale))
                 nh = max(1, round(padded.size[1] * scale))
                 padded = padded.resize((nw, nh), Image.LANCZOS)
@@ -147,6 +184,12 @@ def main():
     for sheet_name, filename, rows, cols, names in SHEETS:
         print("[%s] %s (%d sprites)" % (sheet_name, filename, len(names)))
         all_sprites.update(slice_sheet(sheet_name, filename, rows, cols, names))
+    for sheet_name, filename, rows, cols, names, max_dim, key_g in SHEETS8:
+        print("[%s] %s (%d sprites)" % (sheet_name, filename, len(names)))
+        all_sprites.update(slice_sheet(sheet_name, filename, rows, cols, names,
+                                       sheets_dir=SHEETS8_DIR,
+                                       max_dim=max_dim, key_g=key_g,
+                                       key_mode="magenta"))
     manifest = os.path.join(OUT_DIR, "manifest.json")
     with open(manifest, "w") as f:
         json.dump(all_sprites, f, indent=1, sort_keys=True)

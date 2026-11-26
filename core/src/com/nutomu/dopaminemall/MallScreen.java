@@ -83,8 +83,42 @@ import java.util.List;
  *   A／決定ボタンで使う・装備する、B／Back ボタンで閉じる。選んだ項目は
  *   ハイライト表示される。開閉・項目移動だけではターンを消費しない。
  * - Fire TV リモコンの Back ボタンがアプリに届くよう setCatchKey(BACK) する。
+ * 8方向移動と向き・アニメーション、連結した壁。
+ * - 移動は8方向。矢印キー／WASD は画面の方向（上＝北(-1,-1)、下＝南(+1,+1)、
+ *   左＝西(-1,+1)、右＝東(+1,-1)）に進み、残りの4方向は Q／E／Z／C キーで
+ *   移動する（Q＝北西(-1,0)、E＝北東(0,-1)、Z＝南西(0,+1)、C＝南東(+1,0)）。
+ *   ゲームパッド・Fire TV リモコンの十字キーは画面の4方向に対応する。
+ *   斜め移動も1ターンで、移動先に壁や敵があれば移動できない。
+ * - プレイヤーと敵に向き（0=南〜7=南東、時計回り）を持たせ、移動・攻撃した
+ *   方向を向く。向きに合った8方向スプライトを描く（ない種類は1枚絵のまま）。
+ *   歩行時は移動の補間（約0.12秒）に合わせて歩行フレームを切り替える
+ *   （主人公は2フレーム交互、敵は上下の跳ね＋向きの切り替え）。
+ *   攻撃時は攻撃方向へ素早く突進して戻る＋斬撃エフェクト＋対象のフラッシュ。
+ * - 壁は柱ではなくひとつながりに描く。上面は平らなひし形タイルを継ぎ目なく
+ *   並べ、前面は壁の並びの南側の縁にだけバンドを帯状に描く（3タイル区画に
+ *   分割し、バンドスプライトを回転させて上面の32°に合わせる）。角は角用の
+ *   スプライトでつなげる。壁の高さ（WALL_H=48）は従来の柱と同じ88px相当。
  */
 public class MallScreen implements Screen, InputProcessor {
+    /** 8方向のグリッド移動量。向き 0=南、1=南西、2=西、3=北西、4=北、5=北東、6=東、7=南東。 */
+    static final int[][] DIR_DXY = {{1, 1}, {0, 1}, {-1, 1}, {-1, 0},
+            {-1, -1}, {0, -1}, {1, -1}, {1, 0}};
+
+    /** グリッドの移動量 (dx, dy) に対応する向き（0〜7）を返す。 */
+    static int directionOf(int dx, int dy) {
+        for (int d = 0; d < 8; d++) {
+            if (DIR_DXY[d][0] == dx && DIR_DXY[d][1] == dy) {
+                return d;
+            }
+        }
+        return 0;
+    }
+
+    /** チェビシェフ距離（8方向移動での距離）。隣接は1。 */
+    static int chebyshev(int x1, int y1, int x2, int y2) {
+        return Math.max(Math.abs(x1 - x2), Math.abs(y1 - y2));
+    }
+
     /** アイソメトリックタイルの画面サイズ（ひし形タイルの幅・高さ）。 */
     static final int ISO_TW = 64;
     static final int ISO_TH = 40;
@@ -92,6 +126,10 @@ public class MallScreen implements Screen, InputProcessor {
     static final int VIEW_H = 800;
     /** 視界の広さ（プレイヤーから歩いて何マス先まで「行った場所」にするか）。 */
     static final int SIGHT = 8;
+    /** 壁の高さ（タイル中心から壁上面ダイヤまでの垂直距離）。 */
+    static final int WALL_H = 48;
+    /** 壁の前面バンドの上面の長さ（1タイル分、sqrt(32^2+20^2)）。 */
+    static final float WALL_EDGE = 37.7f;
 
     /** タイル座標 (tx, ty) をアイソメトリックの画面 X 座標に変換する。 */
     static float isoX(float tx, float ty) {
@@ -128,6 +166,20 @@ public class MallScreen implements Screen, InputProcessor {
     /** プレイヤーの描画用補間位置（タイル単位）。移動時に目標タイルへ滑らかに寄る。 */
     private float playerRx;
     private float playerRy;
+    /** プレイヤーの向き（0=南〜7=南東）。 */
+    private int playerFacing = 0;
+    /** 今の移動の距離（タイル単位、直進1・斜め√2）。歩行フレームと跳ねの進行度用。 */
+    private float moveDist = 0f;
+    /** 攻撃時の突進アニメーション（0 なら攻撃中でない）。 */
+    private float attackLungeTimer = 0f;
+    /** 突進する方向（向き 0〜7）。 */
+    private int attackDir = 0;
+    /** 攻撃アニメーションの長さ（秒）。 */
+    private static final float ATTACK_LUNGE_TIME = 0.18f;
+    /** 斬撃エフェクトの表示時間。 */
+    private float slashTimer = 0f;
+    private int slashX, slashY;
+    private static final float SLASH_TIME = 0.22f;
     private int floorNumber = 1;
     private int turn = 0;
     private boolean showMinimap = false;
@@ -202,6 +254,11 @@ public class MallScreen implements Screen, InputProcessor {
     private int attackFlashX, attackFlashY;
     /** 霧の発生間隔を測るタイマー（上層の雰囲気用）。 */
     private float fogTimer = 0f;
+    /** 壁の連結描画用：南側の角タイルかどうか。 */
+    private boolean[][] wallCorner;
+    /** 壁の連結描画用：SE面・SW面の走行の長さ。最後のタイルにだけ長さが入る。 */
+    private int[][] seRunLen;
+    private int[][] swRunLen;
 
     public MallScreen(DopamineMallGame game) {
         this.game = game;
@@ -234,6 +291,11 @@ public class MallScreen implements Screen, InputProcessor {
         playerY = floor.startY;
         playerRx = playerX;
         playerRy = playerY;
+        playerFacing = 0;
+        moveDist = 0f;
+        attackLungeTimer = 0f;
+        slashTimer = 0f;
+        analyzeWalls();
         enemies = FloorGenerator.spawnEnemies(floor, floorNumber);
         items = FloorGenerator.spawnItems(floor, floorNumber, enemies);
         spawnProps();
@@ -252,6 +314,69 @@ public class MallScreen implements Screen, InputProcessor {
         if (!titleScreen) {
             updateMusic();
         }
+    }
+
+    /** 壁の連結描画のための解析。角タイルと、SE面・SW面の走行（run）を求める。
+     * 走行は最後のタイルに長さを入れる（バンドは最後のタイルで描く。走行中の
+     * 壁タイルの床ダイヤはバンドより先に描かれるため、バンドがそれを隠す）。
+     * SE面の走行は x 一定・y 方向、SW面の走行は y 一定・x 方向。 */
+    private void analyzeWalls() {
+        wallCorner = new boolean[floor.w][floor.h];
+        seRunLen = new int[floor.w][floor.h];
+        swRunLen = new int[floor.w][floor.h];
+        for (int y = 0; y < floor.h; y++) {
+            for (int x = 0; x < floor.w; x++) {
+                if (!isWallTile(x, y)) {
+                    continue;
+                }
+                boolean se = !isWallTile(x + 1, y);
+                boolean sw = !isWallTile(x, y + 1);
+                if (se && sw) {
+                    wallCorner[x][y] = true;
+                }
+            }
+        }
+        for (int y = 0; y < floor.h; y++) {
+            for (int x = 0; x < floor.w; x++) {
+                if (!isWallTile(x, y) || wallCorner[x][y]) {
+                    continue;
+                }
+                // SE面の走行の開始：1つ上のタイルが壁でない／角／南東面が露出していない場合
+                if (!isWallTile(x + 1, y) && (!isWallTile(x, y - 1)
+                        || isCornerTile(x, y - 1) || isWallTile(x + 1, y - 1))) {
+                    int n = 0;
+                    while (isWallTile(x, y + n) && !isCornerTile(x, y + n)
+                            && !isWallTile(x + 1, y + n)) {
+                        n++;
+                    }
+                    if (n > 0) {
+                        seRunLen[x][y + n - 1] = n;
+                    }
+                }
+                // SW面の走行の開始：1つ左のタイルが壁でない／角／南西面が露出していない場合
+                if (!isWallTile(x, y + 1) && (!isWallTile(x - 1, y)
+                        || isCornerTile(x - 1, y) || isWallTile(x - 1, y + 1))) {
+                    int n = 0;
+                    while (isWallTile(x + n, y) && !isCornerTile(x + n, y)
+                            && !isWallTile(x + n, y + 1)) {
+                        n++;
+                    }
+                    if (n > 0) {
+                        swRunLen[x + n - 1][y] = n;
+                    }
+                }
+            }
+        }
+    }
+
+    /** (x, y) が壁タイルかどうか（範囲外は壁でない）。 */
+    private boolean isWallTile(int x, int y) {
+        return floor.inBounds(x, y) && floor.tiles[x][y] == Floor.Tile.WALL;
+    }
+
+    /** (x, y) が南側の角タイルかどうか（範囲外は角でない）。 */
+    private boolean isCornerTile(int x, int y) {
+        return floor.inBounds(x, y) && wallCorner[x][y];
     }
 
     /** 装飾用の小物をフロアの空いている床タイルに数個配置する（移動を妨げない）。 */
@@ -431,6 +556,7 @@ public class MallScreen implements Screen, InputProcessor {
         }
         int nx = playerX + dx;
         int ny = playerY + dy;
+        playerFacing = directionOf(dx, dy);
         Enemy target = enemyAt(nx, ny);
         if (target != null) {
             int damage = target.takeDamage(playerAttack());
@@ -438,6 +564,12 @@ public class MallScreen implements Screen, InputProcessor {
             attackFlashTimer = 0.2f;
             attackFlashX = nx;
             attackFlashY = ny;
+            // 攻撃アニメーション：攻撃方向へ突進＋斬撃エフェクト＋対象のフラッシュ
+            attackLungeTimer = ATTACK_LUNGE_TIME;
+            attackDir = playerFacing;
+            slashTimer = SLASH_TIME;
+            slashX = nx;
+            slashY = ny;
             if (target.isAlive()) {
                 message = Localization.t("msg.attacked", target.kind.label(), damage);
             } else {
@@ -467,6 +599,7 @@ public class MallScreen implements Screen, InputProcessor {
         if (!floor.isWalkable(nx, ny)) {
             return;
         }
+        moveDist = (float) Math.sqrt(dx * dx + dy * dy);
         playerX = nx;
         playerY = ny;
         turn++;
@@ -573,9 +706,10 @@ public class MallScreen implements Screen, InputProcessor {
 
     /**
      * 敵のターン。敵はプレイヤーの1ターンごとに1回行動する。
-     * - プレイヤーに隣接していたら攻撃する。
+     * - プレイヤーに隣接（8方向で1マス）していたら攻撃する。
      * - プレイヤーが5マス以内にいるとプレイヤーに向かって1マス近づく。
      * - それ以外はランダムな方向に1マスうろつく（壁や他の敵の方向には動かない）。
+     * 移動・攻撃した方向を向く。攻撃時は突進アニメーションと斬撃を見せる。
      */
     private void enemyTurn() {
         if (gameOver) {
@@ -587,11 +721,17 @@ public class MallScreen implements Screen, InputProcessor {
             if (!enemies.contains(e)) {
                 continue;
             }
-            int dist = Math.abs(e.x - playerX) + Math.abs(e.y - playerY);
+            int dist = chebyshev(e.x, e.y, playerX, playerY);
             if (dist == 1) {
                 int damage = Math.max(1, e.attack - playerDefense());
                 playerHp -= damage;
                 flash(1f, 0.2f, 0.2f);
+                e.facing = directionOf(playerX - e.x, playerY - e.y);
+                e.lungeTimer = ATTACK_LUNGE_TIME;
+                e.lungeDir = e.facing;
+                slashTimer = SLASH_TIME;
+                slashX = playerX;
+                slashY = playerY;
                 message = Localization.t("msg.hit_by", e.kind.label(), damage);
                 if (playerHp <= 0) {
                     playerHp = 0;
@@ -603,32 +743,26 @@ public class MallScreen implements Screen, InputProcessor {
             int dx = 0;
             int dy = 0;
             if (dist <= CHASE_RANGE) {
-                // プレイヤーに近づく：差の大きい軸を優先する
-                int gx = Integer.compare(playerX, e.x);
-                int gy = Integer.compare(playerY, e.y);
-                if (Math.abs(playerX - e.x) >= Math.abs(playerY - e.y)) {
-                    dx = gx;
-                    dy = 0;
-                } else {
-                    dx = 0;
-                    dy = gy;
-                }
-                if (!canEnemyMoveTo(e, e.x + dx, e.y + dy)) {
-                    // 優先方向に進めなければもう一方の軸を試す
-                    dx = 0;
-                    dy = 0;
-                    if (gx != 0 && canEnemyMoveTo(e, e.x + gx, e.y)) {
-                        dx = gx;
-                    } else if (gy != 0 && canEnemyMoveTo(e, e.x, e.y + gy)) {
-                        dy = gy;
+                // プレイヤーに近づく：8方向のうちチェビシェフ距離が最も縮む方向を選ぶ
+                int bestDist = dist;
+                for (int d = 0; d < 8; d++) {
+                    int ndx = DIR_DXY[d][0];
+                    int ndy = DIR_DXY[d][1];
+                    if (!canEnemyMoveTo(e, e.x + ndx, e.y + ndy)) {
+                        continue;
+                    }
+                    int nd = chebyshev(e.x + ndx, e.y + ndy, playerX, playerY);
+                    if (nd < bestDist) {
+                        bestDist = nd;
+                        dx = ndx;
+                        dy = ndy;
                     }
                 }
             } else {
-                // うろつく：ランダムな4方向のうち進める方向を1つ選ぶ
-                int[][] dirs = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
-                int start = (int) (Math.random() * dirs.length);
-                for (int i = 0; i < dirs.length; i++) {
-                    int[] d = dirs[(start + i) % dirs.length];
+                // うろつく：ランダムな8方向のうち進める方向を1つ選ぶ
+                int start = (int) (Math.random() * DIR_DXY.length);
+                for (int i = 0; i < DIR_DXY.length; i++) {
+                    int[] d = DIR_DXY[(start + i) % DIR_DXY.length];
                     if (canEnemyMoveTo(e, e.x + d[0], e.y + d[1])) {
                         dx = d[0];
                         dy = d[1];
@@ -639,6 +773,7 @@ public class MallScreen implements Screen, InputProcessor {
             if ((dx != 0 || dy != 0) && canEnemyMoveTo(e, e.x + dx, e.y + dy)) {
                 e.x += dx;
                 e.y += dy;
+                e.facing = directionOf(dx, dy);
             }
         }
     }
@@ -796,20 +931,34 @@ public class MallScreen implements Screen, InputProcessor {
             return true;
         }
         switch (keycode) {
+            // 矢印キー／WASD は画面の方向に進む（上＝北、下＝南、左＝西、右＝東）。
             case Input.Keys.UP:
             case Input.Keys.W:
-                tryMove(0, 1);
+                tryMove(-1, -1);
                 return true;
             case Input.Keys.DOWN:
             case Input.Keys.S:
-                tryMove(0, -1);
+                tryMove(1, 1);
                 return true;
             case Input.Keys.LEFT:
             case Input.Keys.A:
-                tryMove(-1, 0);
+                tryMove(-1, 1);
                 return true;
             case Input.Keys.RIGHT:
             case Input.Keys.D:
+                tryMove(1, -1);
+                return true;
+            // 残りの4方向は Q／E／Z／C キー（Q＝北西、E＝北東、Z＝南西、C＝南東）。
+            case Input.Keys.Q:
+                tryMove(-1, 0);
+                return true;
+            case Input.Keys.E:
+                tryMove(0, -1);
+                return true;
+            case Input.Keys.Z:
+                tryMove(0, 1);
+                return true;
+            case Input.Keys.C:
                 tryMove(1, 0);
                 return true;
             case Input.Keys.SPACE:
@@ -998,6 +1147,28 @@ public class MallScreen implements Screen, InputProcessor {
         }
         batch.end();
 
+        // 斬撃エフェクト（白い弧）とヒット時の星（攻撃したタイルに描く）
+        if (slashTimer > 0 || attackFlashTimer > 0) {
+            batch.setProjectionMatrix(camera.combined);
+            batch.begin();
+            if (slashTimer > 0) {
+                float alpha = slashTimer / SLASH_TIME;
+                batch.setColor(1f, 1f, 1f, alpha);
+                float sx = isoX(slashX, slashY);
+                float sy = isoY(slashX, slashY);
+                batch.draw(sprites.slash, sx - 32, sy - 8, 64, 64);
+            }
+            if (attackFlashTimer > 0) {
+                float alpha = attackFlashTimer / 0.2f;
+                batch.setColor(1f, 1f, 1f, alpha);
+                float fx = isoX(attackFlashX, attackFlashY);
+                float fy = isoY(attackFlashX, attackFlashY);
+                batch.draw(sprites.hitstar, fx - 24, fy - 12, 48, 48);
+            }
+            batch.setColor(1f, 1f, 1f, 1f);
+            batch.end();
+        }
+
         // 階層別の雰囲気オーバーレイ＋光＋パーティクル
         Gdx.gl.glEnable(GL20.GL_BLEND);
         Gdx.gl.glBlendFunc(GL20.GL_SRC_ALPHA, GL20.GL_ONE_MINUS_SRC_ALPHA);
@@ -1019,12 +1190,6 @@ public class MallScreen implements Screen, InputProcessor {
         shapes.circle(pcx, pcy, ISO_TW * 2.6f);
         shapes.setColor(1f, 0.85f, 0.45f, 0.025f * ls);
         shapes.circle(pcx, pcy, ISO_TW * 4.0f);
-        // 攻撃したタイルのフラッシュ
-        if (attackFlashTimer > 0) {
-            shapes.setColor(1f, 1f, 0.6f, attackFlashTimer / 0.2f * 0.7f);
-            shapes.circle(isoX(attackFlashX, attackFlashY),
-                    isoY(attackFlashX, attackFlashY), ISO_TW * 0.38f);
-        }
         // パーティクル（きらめき・撃破時の破片。霧はテクスチャ付きなので後で描く）
         for (Particle p : particles) {
             if (p.tex != null) {
@@ -1126,7 +1291,7 @@ public class MallScreen implements Screen, InputProcessor {
     private void drawTerrainIso(Floor.Tile t, float px, float py) {
         switch (t) {
             case WALL:
-                drawAnchored(sprites.wall, px, py, 88);
+                // 壁は drawTileIso から drawWallIso で描く（ここには来ない）
                 break;
             case SHELF:
                 // テナントフロア（ブティック・雑貨店）は本棚、スーパーは商品棚
@@ -1171,6 +1336,10 @@ public class MallScreen implements Screen, InputProcessor {
             if (t == Floor.Tile.FLOOR) {
                 batch.draw(sprites.floorTexture(floor.type),
                         px - ISO_TW / 2f, py - ISO_TH / 2f, ISO_TW, ISO_TH);
+            } else if (t == Floor.Tile.WALL) {
+                batch.draw(sprites.floorTexture(floor.type),
+                        px - ISO_TW / 2f, py - ISO_TH / 2f, ISO_TW, ISO_TH);
+                drawWallIso(x, y, px, py);
             } else {
                 drawTerrainIso(t, px, py);
             }
@@ -1189,11 +1358,139 @@ public class MallScreen implements Screen, InputProcessor {
             if (prop != null) {
                 drawPropIso(prop, px, py);
             }
+        } else if (t == Floor.Tile.WALL) {
+            // 壁はひとつながりに描く（上面ダイヤ＋前面バンド／角）
+            batch.draw(sprites.floorTexture(floor.type),
+                    px - ISO_TW / 2f, py - ISO_TH / 2f, ISO_TW, ISO_TH);
+            drawWallIso(x, y, px, py);
         } else {
             // 床の下にひし形タイルを敷いてから立体物を描く
             batch.draw(sprites.floorTexture(floor.type),
                     px - ISO_TW / 2f, py - ISO_TH / 2f, ISO_TW, ISO_TH);
             drawTerrainIso(t, px, py);
+        }
+    }
+
+    /**
+     * 壁タイル1枚を描く。上面ダイヤを継ぎ目なく並べ、前面はバンドか角でつなげる。
+     * バンドは走行の最後のタイルで描く（走行中の壁タイルの床ダイヤはバンドより
+     * 先に描かれるため、バンドがそれを隠す）。
+     */
+    private void drawWallIso(int x, int y, float px, float py) {
+        // 上面ダイヤ（継ぎ目なく並ぶ）
+        batch.draw(sprites.wallTop,
+                px - ISO_TW / 2f, py + WALL_H - ISO_TH / 2f, ISO_TW, ISO_TH);
+        if (wallCorner[x][y]) {
+            drawWallCorner(px, py);
+            return;
+        }
+        if (seRunLen[x][y] > 0) {
+            drawWallRunSE(x, y, seRunLen[x][y]);
+        }
+        if (swRunLen[x][y] > 0) {
+            drawWallRunSW(x, y, swRunLen[x][y]);
+        }
+    }
+
+    /** 南側の角タイルに角スプライトを描く。上面ダイヤの南頂点に角の上面の
+     * V 字の谷が来るよう配置する（スプライト 64x72、谷は下から 0.702 の高さ）。 */
+    private void drawWallCorner(float px, float py) {
+        batch.draw(sprites.wallCorner,
+                px - 32f, py + WALL_H - 70.5f, 64f, 72f);
+    }
+
+    /** SE面の走行（x 一定、y 方向）を描く。走行は y1-n+1 .. y1。区画は末尾から配置する。 */
+    private void drawWallRunSE(int x, int y1, int n) {
+        int[] segs = splitSegments(n);
+        int endY = y1;
+        for (int i = segs.length - 1; i >= 0; i--) {
+            int seg = segs[i];
+            // 区画の最後のタイルの E_top（上面の左下端）がバンドのアンカー
+            float tx = isoX(x, endY) + ISO_TW / 2f;
+            float ty = isoY(x, endY) + WALL_H;
+            drawWallBand(tx, ty, seg, true);
+            endY -= seg;
+        }
+    }
+
+    /** SW面の走行（y 一定、x 方向）を描く。走行は x1-n+1 .. x1。区画は先頭から配置する。 */
+    private void drawWallRunSW(int x1, int y, int n) {
+        int[] segs = splitSegments(n);
+        int cx = x1 - n + 1;
+        for (int i = 0; i < segs.length; i++) {
+            int seg = segs[i];
+            // 区画の最初のタイルの W_top（上面の左上端）がバンドのアンカー
+            float tx = isoX(cx, y) - ISO_TW / 2f;
+            float ty = isoY(cx, y) + WALL_H;
+            drawWallBand(tx, ty, seg, false);
+            cx += seg;
+        }
+    }
+
+    /** 走行の長さを3タイル区画に分割する。余りが1なら最後の2区画を2+2にする。 */
+    private int[] splitSegments(int n) {
+        ArrayList<Integer> segs = new ArrayList<Integer>();
+        int rest = n;
+        while (rest >= 3) {
+            segs.add(3);
+            rest -= 3;
+        }
+        if (rest == 1 && !segs.isEmpty()) {
+            segs.set(segs.size() - 1, 2);
+            segs.add(2);
+        } else if (rest > 0) {
+            segs.add(rest);
+        }
+        int[] out = new int[segs.size()];
+        for (int i = 0; i < out.length; i++) {
+            out[i] = segs.get(i);
+        }
+        return out;
+    }
+
+    /**
+     * 壁の前面バンドを1区画描く。バンドスプライト（480x376）の上面は
+     * 21.5°なので、回転させて上面の32°に合わせる。上面の長さ・厚み・角度を
+     * すべて満たすようスケールと回転角を解く（3タイル区画）。1〜2タイルの
+     * 区画は厳密解がないため、角度と長さだけを合わせた緩和解を使う。
+     * target は上面の始点（SE面は E_top、SW面は W_top）。上面の階段が
+     * 理想線をまたぐよう、帯全体を BAND_TOP_LIFT だけ上にずらす。
+     */
+    private void drawWallBand(float targetX, float targetY, int segTiles, boolean ascending) {
+        float edge = segTiles * WALL_EDGE;
+        float sx;
+        float sy;
+        float theta;
+        if (segTiles >= 3) {
+            float v = 84.06f / edge;
+            if (v > 1f) {
+                v = 1f;
+            }
+            theta = 32f - (float) Math.toDegrees(Math.asin(v)) / 2f;
+            sy = 40.7f / (183f * (float) Math.cos(Math.toRadians(32f - theta)));
+            sx = edge * (float) Math.cos(Math.toRadians(32f - theta)) / 480f;
+        } else {
+            theta = 0f;
+            sx = edge / 566f;
+            sy = 300f * sx / 189f;
+        }
+        float lift = 4f;
+        if (ascending) {
+            // SE面：アンカーは上面の左下端（テクスチャ座標 (0,187)）。反時計回りに回転。
+            float ax = 187f * sy;
+            float rad = (float) Math.toRadians(theta);
+            float x = targetX + ax * (float) Math.sin(rad);
+            float y = targetY + lift - ax * (float) Math.cos(rad);
+            batch.draw(sprites.wallBand, x, y, 0, 0, 480, 376, sx, sy, theta,
+                    0, 0, 480, 376, false, false);
+        } else {
+            // SW面：左右反転し、アンカーは上面の左上端（矩形の左上 (0,376)）。時計回りに回転。
+            float ax = 376f * sy;
+            float rad = (float) Math.toRadians(theta);
+            float x = targetX - ax * (float) Math.sin(rad);
+            float y = targetY + lift - ax * (float) Math.cos(rad);
+            batch.draw(sprites.wallBand, x, y, 0, 0, 480, 376, sx, sy, -theta,
+                    0, 0, 480, 376, true, false);
         }
     }
 
@@ -1233,19 +1530,35 @@ public class MallScreen implements Screen, InputProcessor {
         batch.draw(tex, px - w / 2f, py - h / 2f, w, h);
     }
 
-    /** 敵を補間位置に描く（ボスは大きく表示する）。 */
+    /** 敵を補間位置に描く（ボスは大きく表示する）。向きに合ったスプライトを使う。 */
     private void drawCharacterIso(Enemy e) {
         float px = isoX(e.rx, e.ry);
         float py = isoY(e.rx, e.ry);
+        // 攻撃時の突進：攻撃方向へ素早く出て戻る
+        if (e.lungeTimer > 0) {
+            float progress = 1f - e.lungeTimer / ATTACK_LUNGE_TIME;
+            float mag = (float) Math.sin(progress * Math.PI) * 0.35f;
+            int[] d = DIR_DXY[e.lungeDir];
+            px += isoX(d[0] * mag, d[1] * mag);
+            py += isoY(d[0] * mag, d[1] * mag);
+        }
         float height = e.isBoss ? 90 : 64;
-        drawAnchored(sprites.enemyTexture(e.kind), px, py, height);
+        drawAnchored(sprites.enemyTexture(e.kind, e.facing), px, py, height);
     }
 
-    /** プレイヤーを補間位置に描く（歩行時の上下動つき）。 */
+    /** プレイヤーを補間位置に描く（歩行時の上下動と歩行フレームつき）。 */
     private void drawPlayerIso(float bob) {
         float px = isoX(playerRx, playerRy);
         float py = isoY(playerRx, playerRy) + bob;
-        drawAnchored(sprites.hero, px, py, 64);
+        // 攻撃時の突進：攻撃方向へ素早く出て戻る
+        if (attackLungeTimer > 0) {
+            float progress = 1f - attackLungeTimer / ATTACK_LUNGE_TIME;
+            float mag = (float) Math.sin(progress * Math.PI) * 0.35f;
+            int[] d = DIR_DXY[attackDir];
+            px += isoX(d[0] * mag, d[1] * mag);
+            py += isoY(d[0] * mag, d[1] * mag);
+        }
+        drawAnchored(sprites.heroTexture(playerFacing, walkFrame()), px, py, 64);
     }
 
     /** フロアタイプごとの床の色調（スプライトの色に掛ける）。 */
@@ -1306,6 +1619,15 @@ public class MallScreen implements Screen, InputProcessor {
         for (Enemy e : enemies) {
             e.rx = approach(e.rx, e.x, step);
             e.ry = approach(e.ry, e.y, step);
+            if (e.lungeTimer > 0) {
+                e.lungeTimer -= delta;
+            }
+        }
+        if (attackLungeTimer > 0) {
+            attackLungeTimer -= delta;
+        }
+        if (slashTimer > 0) {
+            slashTimer -= delta;
         }
     }
 
@@ -1322,11 +1644,29 @@ public class MallScreen implements Screen, InputProcessor {
         float dx = playerX - playerRx;
         float dy = playerY - playerRy;
         float dist = (float) Math.sqrt(dx * dx + dy * dy);
-        if (dist <= 0.01f) {
+        if (dist <= 0.01f || moveDist <= 0f) {
             return 0f;
         }
-        float progress = 1f - dist;
+        float progress = 1f - dist / moveDist;
+        if (progress < 0f) {
+            progress = 0f;
+        }
+        if (progress > 1f) {
+            progress = 1f;
+        }
         return (float) Math.sin(progress * Math.PI) * 3f;
+    }
+
+    /** 歩行フレーム（0/1）：移動の補間の前半はフレームA、後半はフレームB。止まっているときは0。 */
+    private int walkFrame() {
+        float dx = playerX - playerRx;
+        float dy = playerY - playerRy;
+        float dist = (float) Math.sqrt(dx * dx + dy * dy);
+        if (dist <= 0.01f || moveDist <= 0f) {
+            return 0;
+        }
+        float progress = 1f - dist / moveDist;
+        return progress < 0.5f ? 0 : 1;
     }
 
     /** 上層の霧：フロア上に霧スプライトのパーティクルを漂わせる（5Fから）。 */

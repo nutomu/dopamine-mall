@@ -50,7 +50,8 @@ public class Floor {
     }
 
     /**
-     * スタート地点から歩いて到達できるタイルまでの距離（BFS、4方向）。
+     * スタート地点から歩いて到達できるタイルまでの距離（BFS、8方向）。
+     * 斜め移動も1ターンでできるため、視界・到達可能性も8方向で数える。
      * 到達不能なタイルは -1。
      */
     public int[][] distancesFrom(int sx, int sy) {
@@ -66,11 +67,11 @@ public class Floor {
         ArrayDeque<int[]> queue = new ArrayDeque<int[]>();
         dist[sx][sy] = 0;
         queue.add(new int[]{sx, sy});
-        int[] dx = {1, -1, 0, 0};
-        int[] dy = {0, 0, 1, -1};
+        int[] dx = {1, 1, 0, -1, -1, -1, 0, 1};
+        int[] dy = {1, 0, 1, 1, -1, 0, -1, -1};
         while (!queue.isEmpty()) {
             int[] cur = queue.poll();
-            for (int i = 0; i < 4; i++) {
+            for (int i = 0; i < 8; i++) {
                 int nx = cur[0] + dx[i];
                 int ny = cur[1] + dy[i];
                 if (isWalkable(nx, ny) && dist[nx][ny] < 0) {
