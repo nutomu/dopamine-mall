@@ -49,6 +49,15 @@ import java.util.List;
  *   入るとメッセージで知らせる。中の敵は視界ルール通り、入るまで見えない。
  * ※ グラフィックスは色分けしたタイルのシンプルな表示（凝った表現は M6 で行う）。
  * ※ HUD の文字はデフォルトフォントが ASCII のみのため英字表記。
+ * M6：音楽・演出・グラフィックスのテスト実装。
+ * - BGM：生成チップチューンの WAV ループを3曲（タイトル／ダンジョン／ボス）。
+ *   タイトル画面ではタイトル曲、ダンジョンでは環境音楽、ボスフロアと
+ *   モンスターハウスでは緊迫感のある曲に切り替わる。Nキーでミュート切替。
+ * - タイトル画面：ゲーム開始前に「DOPAMINE MALL」を表示し、Enterキーで開始。
+ * - 店内放送：HUD にフロアタイプごとの放送文言が20ターンごとに流れる。
+ *   階を上がったときは「Welcome to ○F!」の特別な放送。
+ * - 演出：フロアアップ時のきらめき、攻撃・被弾時のフラッシュ、敵撃破時の
+ *   パーティクル、プレイヤーを中心とした柔らかい光。視界ルールは変えない。
  */
 public class MallScreen implements Screen, InputProcessor {
     static final int TILE = 48;
@@ -97,6 +106,29 @@ public class MallScreen implements Screen, InputProcessor {
     private boolean isBossFloor = false;
     private boolean monsterHouseAnnounced = false;
 
+    /** 音楽・タイトル画面・店内放送・演出（M6）。 */
+    private MusicManager music = new MusicManager();
+    private boolean titleScreen = true;
+    /** 店内放送：20ターンごとにフロアタイプの文言を切り替える。 */
+    private static final int ANNOUNCE_EVERY_TURNS = 20;
+    private String announcement = "";
+    private int announcementIndex = 0;
+    private int announcementTurn = 0;
+    /** モンスターハウスに入ったあとボス曲を流しているかどうか。 */
+    private boolean monsterHouseMusic = false;
+    /** 演出用パーティクル（きらめき・撃破時の破片）。 */
+    private static class Particle {
+        float x, y, vx, vy, life, maxLife, size;
+        float r, g, b;
+    }
+    private List<Particle> particles = new ArrayList<Particle>();
+    /** 攻撃・被弾時の画面フラッシュ（0 になると消える）。 */
+    private float flashTimer = 0f;
+    private float flashR, flashG, flashB;
+    /** 攻撃したタイルのフラッシュ。 */
+    private float attackFlashTimer = 0f;
+    private int attackFlashX, attackFlashY;
+
     public MallScreen(DopamineMallGame game) {
         this.game = game;
     }
@@ -112,6 +144,8 @@ public class MallScreen implements Screen, InputProcessor {
         hudFont = new BitmapFont();
         hudFont.getData().setScale(1.5f);
         loadFloor();
+        music.load();
+        music.playTitle();
         Gdx.input.setInputProcessor(this);
     }
 
@@ -124,7 +158,60 @@ public class MallScreen implements Screen, InputProcessor {
         items = FloorGenerator.spawnItems(floor, floorNumber, enemies);
         isBossFloor = floorNumber % 5 == 0;
         monsterHouseAnnounced = false;
+        monsterHouseMusic = false;
         updateVisibility();
+        // 店内放送：階を上がったときは特別な放送を流す。
+        announcement = Announcements.welcome(floorNumber);
+        announcementTurn = turn;
+        announcementIndex = 0;
+        // 2階以降はフロアアップのきらめきを散らす。
+        if (floorNumber > 1) {
+            spawnSparkles();
+        }
+        if (!titleScreen) {
+            updateMusic();
+        }
+    }
+
+    /** 状況に応じた BGM を選ぶ（ボスフロア／モンスターハウスはボス曲）。 */
+    private void updateMusic() {
+        if (titleScreen) {
+            music.playTitle();
+            return;
+        }
+        if (isBossFloor && bossAlive()) {
+            music.playBoss();
+            return;
+        }
+        if (monsterHouseMusic) {
+            music.playBoss();
+            return;
+        }
+        music.playDungeon();
+    }
+
+    /** ボスがまだ生きているかどうか。 */
+    private boolean bossAlive() {
+        for (Enemy e : enemies) {
+            if (e.isBoss) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** モンスターハウスの中にまだ敵がいるかどうか。 */
+    private boolean monsterHouseHasEnemies() {
+        if (!floor.hasMonsterHouse) {
+            return false;
+        }
+        for (Enemy e : enemies) {
+            if (e.x >= floor.mhX0 && e.x <= floor.mhX1
+                    && e.y >= floor.mhY0 && e.y <= floor.mhY1) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /** プレイヤーの攻撃力（素手の攻撃力＋装備中の武器のボーナス）。 */
@@ -214,9 +301,14 @@ public class MallScreen implements Screen, InputProcessor {
         Enemy target = enemyAt(nx, ny);
         if (target != null) {
             int damage = target.takeDamage(playerAttack());
+            flash(1f, 1f, 0.6f);
+            attackFlashTimer = 0.2f;
+            attackFlashX = nx;
+            attackFlashY = ny;
             if (target.isAlive()) {
                 message = "Attacked " + target.kind.name() + " for " + damage + " dmg!";
             } else {
+                spawnDeathParticles(target);
                 enemies.remove(target);
                 if (target.isBoss) {
                     // ボスを倒すと良いアイテムをその場に落とす。
@@ -225,8 +317,14 @@ public class MallScreen implements Screen, InputProcessor {
                     items.add(new Item(drop, target.x, target.y));
                     message = "Defeated BOSS " + target.kind.name() + "! It dropped "
                             + drop.displayName + "!";
+                    updateMusic();
                 } else {
                     message = "Defeated " + target.kind.name() + "!";
+                    // モンスターハウスの中の敵を倒しきったらボス曲から戻る。
+                    if (monsterHouseMusic && !monsterHouseHasEnemies()) {
+                        monsterHouseMusic = false;
+                        updateMusic();
+                    }
                 }
             }
             turn++;
@@ -267,6 +365,9 @@ public class MallScreen implements Screen, InputProcessor {
                 && playerY >= floor.mhY0 && playerY <= floor.mhY1) {
             monsterHouseAnnounced = true;
             message = "Monster house! Enemies everywhere!";
+            // モンスターハウスに入ったらボス曲に切り替わる。
+            monsterHouseMusic = true;
+            updateMusic();
         }
     }
 
@@ -348,6 +449,7 @@ public class MallScreen implements Screen, InputProcessor {
         if (gameOver) {
             return;
         }
+        updateAnnouncement();
         List<Enemy> acting = new ArrayList<Enemy>(enemies);
         for (Enemy e : acting) {
             if (!enemies.contains(e)) {
@@ -357,6 +459,7 @@ public class MallScreen implements Screen, InputProcessor {
             if (dist == 1) {
                 int damage = Math.max(1, e.attack - playerDefense());
                 playerHp -= damage;
+                flash(1f, 0.2f, 0.2f);
                 message = e.kind.name() + " hit you for " + damage + " dmg!";
                 if (playerHp <= 0) {
                     playerHp = 0;
@@ -419,6 +522,75 @@ public class MallScreen implements Screen, InputProcessor {
         return enemyAt(x, y) == null;
     }
 
+    /** 店内放送：20ターンごとにフロアタイプの文言を切り替える。 */
+    private void updateAnnouncement() {
+        if (turn - announcementTurn >= ANNOUNCE_EVERY_TURNS) {
+            String[] lines = Announcements.linesFor(floor.type);
+            announcementIndex = (announcementIndex + 1) % lines.length;
+            announcement = lines[announcementIndex];
+            announcementTurn = turn;
+        }
+    }
+
+    /** 攻撃・被弾時の画面フラッシュを設定する。 */
+    private void flash(float r, float g, float b) {
+        flashTimer = 0.18f;
+        flashR = r;
+        flashG = g;
+        flashB = b;
+    }
+
+    /** フロアアップ時のきらめき：プレイヤーの周りに金色の点を散らす。 */
+    private void spawnSparkles() {
+        for (int i = 0; i < 24; i++) {
+            Particle p = new Particle();
+            p.x = (playerX + (float) (Math.random() * 12 - 6)) * TILE + TILE / 2f;
+            p.y = (playerY + (float) (Math.random() * 12 - 6)) * TILE + TILE / 2f;
+            p.vx = (float) (Math.random() * 10 - 5);
+            p.vy = (float) (Math.random() * 20 + 5);
+            p.maxLife = p.life = 1.2f + (float) Math.random() * 1.3f;
+            p.size = 3f + (float) Math.random() * 4f;
+            p.r = 1f;
+            p.g = 0.9f;
+            p.b = 0.4f;
+            particles.add(p);
+        }
+    }
+
+    /** 敵撃破時のパーティクル：倒れた場所に敵の色の点が散って消える。 */
+    private void spawnDeathParticles(Enemy e) {
+        for (int i = 0; i < 8; i++) {
+            Particle p = new Particle();
+            p.x = e.x * TILE + TILE / 2f;
+            p.y = e.y * TILE + TILE / 2f;
+            double angle = Math.random() * Math.PI * 2;
+            double speed = 40 + Math.random() * 90;
+            p.vx = (float) (Math.cos(angle) * speed);
+            p.vy = (float) (Math.sin(angle) * speed);
+            p.maxLife = p.life = 0.4f + (float) Math.random() * 0.3f;
+            p.size = 3f + (float) Math.random() * 3f;
+            p.r = e.kind.r;
+            p.g = e.kind.g;
+            p.b = e.kind.b;
+            particles.add(p);
+        }
+    }
+
+    /** パーティクルを1フレーム分進める。 */
+    private void updateParticles(float delta) {
+        for (int i = particles.size() - 1; i >= 0; i--) {
+            Particle p = particles.get(i);
+            p.life -= delta;
+            if (p.life <= 0) {
+                particles.remove(i);
+                continue;
+            }
+            p.x += p.vx * delta;
+            p.y += p.vy * delta;
+            p.vy -= 20 * delta;
+        }
+    }
+
     /** ゲームオーバーからのリスタート。最初からやり直す。 */
     private void restart() {
         floorNumber = 1;
@@ -435,6 +607,14 @@ public class MallScreen implements Screen, InputProcessor {
 
     @Override
     public boolean keyDown(int keycode) {
+        // タイトル画面：Enterキーなどでゲーム開始する。
+        if (titleScreen) {
+            if (keycode == Input.Keys.ENTER || keycode == Input.Keys.CENTER
+                    || keycode == Input.Keys.BUTTON_A || keycode == Input.Keys.SPACE) {
+                startGame();
+            }
+            return true;
+        }
         if (gameOver) {
             if (keycode == Input.Keys.ENTER) {
                 restart();
@@ -479,12 +659,23 @@ public class MallScreen implements Screen, InputProcessor {
             case Input.Keys.M:
                 showMinimap = !showMinimap;
                 return true;
+            case Input.Keys.N:
+                music.setMuted(!music.isMuted());
+                message = music.isMuted() ? "Music: OFF" : "Music: ON";
+                return true;
             case Input.Keys.I:
                 showInventory = true;
                 return true;
             default:
                 return false;
         }
+    }
+
+    /** タイトル画面からゲームを開始する（ダンジョンの BGM に切り替わる）。 */
+    private void startGame() {
+        titleScreen = false;
+        message = "";
+        updateMusic();
     }
 
     /** 数字キー（1〜9、0）に対応する持ち物の番号を返す。数字キーでなければ -1。 */
@@ -506,6 +697,11 @@ public class MallScreen implements Screen, InputProcessor {
 
     @Override
     public boolean touchDown(int screenX, int screenY, int pointer, int button) {
+        // タイトル画面：タップでゲーム開始する。
+        if (titleScreen) {
+            startGame();
+            return true;
+        }
         if (gameOver) {
             return true;
         }
@@ -572,6 +768,23 @@ public class MallScreen implements Screen, InputProcessor {
         viewport.apply();
         followCamera();
 
+        // タイトル画面：ダンジョンは描かず、タイトルだけ表示する。
+        if (titleScreen) {
+            drawTitle();
+            return;
+        }
+
+        // 演出のタイマーを進める。
+        if (flashTimer > 0) {
+            flashTimer -= delta;
+        }
+        if (attackFlashTimer > 0) {
+            attackFlashTimer -= delta;
+        }
+        updateParticles(delta);
+
+        Gdx.gl.glEnable(GL20.GL_BLEND);
+        Gdx.gl.glBlendFunc(GL20.GL_SRC_ALPHA, GL20.GL_ONE_MINUS_SRC_ALPHA);
         shapes.setProjectionMatrix(camera.combined);
         shapes.begin(ShapeRenderer.ShapeType.Filled);
         int x0 = Math.max(0, (int) ((camera.position.x - VIEW_W / 2f) / TILE) - 1);
@@ -607,7 +820,29 @@ public class MallScreen implements Screen, InputProcessor {
         // プレイヤー（黄色い円）
         shapes.setColor(1f, 0.8f, 0.2f, 1f);
         shapes.circle(playerX * TILE + TILE / 2f, playerY * TILE + TILE / 2f, TILE * 0.32f);
+        // プレイヤーを中心とした柔らかい光（同心円の薄い光。視界ルールは変えない）
+        float pcx = playerX * TILE + TILE / 2f;
+        float pcy = playerY * TILE + TILE / 2f;
+        shapes.setColor(1f, 0.9f, 0.5f, 0.10f);
+        shapes.circle(pcx, pcy, TILE * 1.3f);
+        shapes.setColor(1f, 0.9f, 0.5f, 0.05f);
+        shapes.circle(pcx, pcy, TILE * 2.6f);
+        shapes.setColor(1f, 0.9f, 0.5f, 0.025f);
+        shapes.circle(pcx, pcy, TILE * 4.0f);
+        // 攻撃したタイルのフラッシュ
+        if (attackFlashTimer > 0) {
+            shapes.setColor(1f, 1f, 0.6f, attackFlashTimer / 0.2f * 0.7f);
+            shapes.circle(attackFlashX * TILE + TILE / 2f,
+                    attackFlashY * TILE + TILE / 2f, TILE * 0.38f);
+        }
+        // パーティクル（きらめき・撃破時の破片）
+        for (Particle p : particles) {
+            float alpha = Math.max(0f, p.life / p.maxLife);
+            shapes.setColor(p.r, p.g, p.b, alpha);
+            shapes.circle(p.x, p.y, p.size);
+        }
         shapes.end();
+        Gdx.gl.glDisable(GL20.GL_BLEND);
 
         batch.setProjectionMatrix(camera.combined);
         batch.begin();
@@ -641,6 +876,52 @@ public class MallScreen implements Screen, InputProcessor {
         if (gameOver) {
             drawGameOver();
         }
+        // 攻撃・被弾時の画面フラッシュ（全体にかかる薄い色）
+        if (flashTimer > 0) {
+            Gdx.gl.glEnable(GL20.GL_BLEND);
+            Gdx.gl.glBlendFunc(GL20.GL_SRC_ALPHA, GL20.GL_ONE_MINUS_SRC_ALPHA);
+            shapes.setProjectionMatrix(camera.combined);
+            shapes.begin(ShapeRenderer.ShapeType.Filled);
+            shapes.setColor(flashR, flashG, flashB, (flashTimer / 0.18f) * 0.22f);
+            shapes.rect(camera.position.x - VIEW_W / 2f, camera.position.y - VIEW_H / 2f,
+                    VIEW_W, VIEW_H);
+            shapes.end();
+            Gdx.gl.glDisable(GL20.GL_BLEND);
+        }
+    }
+
+    /** タイトル画面。Enterキー／タップでゲーム開始する。 */
+    private void drawTitle() {
+        float cx = camera.position.x;
+        float cy = camera.position.y;
+        Gdx.gl.glEnable(GL20.GL_BLEND);
+        Gdx.gl.glBlendFunc(GL20.GL_SRC_ALPHA, GL20.GL_ONE_MINUS_SRC_ALPHA);
+        shapes.setProjectionMatrix(camera.combined);
+        shapes.begin(ShapeRenderer.ShapeType.Filled);
+        shapes.setColor(0.02f, 0.02f, 0.05f, 1f);
+        shapes.rect(cx - VIEW_W / 2f, cy - VIEW_H / 2f, VIEW_W, VIEW_H);
+        // タイトルの飾り：金色の丸い看板
+        shapes.setColor(1f, 0.85f, 0.2f, 1f);
+        shapes.circle(cx, cy + 120, 70);
+        shapes.end();
+        Gdx.gl.glDisable(GL20.GL_BLEND);
+
+        batch.setProjectionMatrix(camera.combined);
+        batch.begin();
+        font.setColor(Color.BLACK);
+        font.draw(batch, "MALL", cx - 55, cy + 135);
+        font.setColor(Color.YELLOW);
+        font.draw(batch, "DOPAMINE MALL", cx - 140, cy + 20);
+        hudFont.setColor(Color.WHITE);
+        hudFont.draw(batch, "An endless shopping mall dungeon roguelike",
+                cx - 260, cy - 20);
+        hudFont.draw(batch, "PRESS ENTER TO START", cx - 145, cy - 70);
+        hudFont.setColor(Color.LIGHT_GRAY);
+        hudFont.draw(batch, "Move: Arrow keys / WASD   [M] MAP   [I] ITEMS   [N] MUSIC",
+                cx - 300, cy - 110);
+        hudFont.draw(batch, "Gamepad / Fire TV remote: D-pad to move",
+                cx - 260, cy - 140);
+        batch.end();
     }
 
     private void drawTile(int x, int y) {
@@ -711,7 +992,7 @@ public class MallScreen implements Screen, InputProcessor {
         }
     }
 
-    /** HUD：階数とフロアタイプ名、HP・攻撃力・防御力・装備、ターン数、キー案内、メッセージ。 */
+    /** HUD：階数とフロアタイプ名、HP・攻撃力・防御力・装備、ターン数、キー案内、店内放送、メッセージ。 */
     private void drawHud() {
         float topY = camera.position.y + VIEW_H / 2f;
         float leftX = camera.position.x - VIEW_W / 2f;
@@ -719,7 +1000,7 @@ public class MallScreen implements Screen, InputProcessor {
         Gdx.gl.glBlendFunc(GL20.GL_SRC_ALPHA, GL20.GL_ONE_MINUS_SRC_ALPHA);
         shapes.begin(ShapeRenderer.ShapeType.Filled);
         shapes.setColor(0f, 0f, 0f, 0.55f);
-        shapes.rect(leftX, topY - 120, VIEW_W, 120);
+        shapes.rect(leftX, topY - 148, VIEW_W, 148);
         shapes.end();
         Gdx.gl.glDisable(GL20.GL_BLEND);
 
@@ -735,11 +1016,15 @@ public class MallScreen implements Screen, InputProcessor {
                         + "   WPN " + (equippedWeapon != null ? equippedWeapon.kind.displayName : "-")
                         + "   ARM " + (equippedArmor != null ? equippedArmor.kind.displayName : "-"),
                 leftX + 12, topY - 50);
-        hudFont.draw(batch, "TURN " + turn + "   [M] MAP   [I] ITEMS   [SPACE] WAIT",
+        hudFont.draw(batch, "TURN " + turn + "   [M] MAP   [I] ITEMS   [N] MUSIC   [SPACE] WAIT",
                 leftX + 12, topY - 78);
+        if (!announcement.isEmpty()) {
+            hudFont.setColor(Color.CYAN);
+            hudFont.draw(batch, "PA: " + announcement, leftX + 12, topY - 106);
+        }
         if (!message.isEmpty()) {
             hudFont.setColor(Color.YELLOW);
-            hudFont.draw(batch, message, leftX + 12, topY - 106);
+            hudFont.draw(batch, message, leftX + 12, topY - 134);
         }
         batch.end();
     }
@@ -836,7 +1121,7 @@ public class MallScreen implements Screen, InputProcessor {
         float mapH = floor.h * cell;
         float topY = camera.position.y + VIEW_H / 2f;
         float ox = camera.position.x + VIEW_W / 2f - mapW - 12;
-        float oy = topY - 120 - mapH - 12;
+        float oy = topY - 148 - mapH - 12;
 
         Gdx.gl.glEnable(GL20.GL_BLEND);
         Gdx.gl.glBlendFunc(GL20.GL_SRC_ALPHA, GL20.GL_ONE_MINUS_SRC_ALPHA);
@@ -899,6 +1184,7 @@ public class MallScreen implements Screen, InputProcessor {
 
     @Override
     public void dispose() {
+        music.dispose();
         shapes.dispose();
         batch.dispose();
         font.dispose();

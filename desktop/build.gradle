@@ -29,5 +29,8 @@ tasks.register('dist', Jar) {
     from {
         configurations.runtimeClasspath.collect { it.isDirectory() ? it : zipTree(it) }
     }
+    // libGDX のアセット（android/assets）を jar のルートに含める。
+    // Gdx.files.internal("music/title.wav") などがデスクトップ版でも読める。
+    from(project(":android").file("assets"))
     with jar
 }
