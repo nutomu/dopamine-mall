@@ -18,6 +18,10 @@
   中央値を、そのキャラクター種別の基準面積（8方向の中央値）で割った
   平方根。同じ方向の全フレームに同じ倍率を使うため、歩行中に
   大きさが脈打つことはない。
+- 主人公v2の静止フレームはマスター参照から作ってあり、歩行フレームより
+  内容が大きい。静止フレームの倍率には方向の倍率に加えて
+  （その方向の歩行フレームの内容の高さの中央値／静止フレームの内容の高さ）
+  を掛け、静止と歩行で見た目の大きさが変わらないようにする。
 - 1枚絵しかない種類（ウサギ・サル・ツチノコ・雪男・獅子の神・ボス3種）は
   方向によるばらつきがないため倍率は 1.0。
 
@@ -61,16 +65,23 @@ def main():
     report = []
 
     # 主人公：8方向 × 4フレーム。方向ごとの面積の中央値で倍率を決める。
+    # 静止フレームは歩行フレームより内容が大きいため、方向の倍率に
+    # （歩行フレームの内容の高さの中央値／静止フレームの内容の高さ）を
+    # 掛けて、静止と歩行で見た目の大きさが変わらないようにする。
     hero_dir_area = []
     hero_names = {}
+    hero_dir_h = []
     for d in range(HERO_DIRS):
         areas = []
+        heights = []
         for f in range(HERO_FRAMES):
             name = "hero_d%d_f%d" % (d, f)
             bbox, area = measure(name)
             hero_names[name] = (bbox, area)
             areas.append(area)
+            heights.append(bbox["h"])
         hero_dir_area.append(statistics.median(areas))
+        hero_dir_h.append(statistics.median(heights))
     hero_ref = statistics.median(hero_dir_area)
     for d in range(HERO_DIRS):
         scale = (hero_ref / hero_dir_area[d]) ** 0.5
@@ -80,9 +91,20 @@ def main():
             norm[name] = {"x": bbox["x"], "y": bbox["y"], "w": bbox["w"],
                           "h": bbox["h"], "area": area,
                           "scale": round(scale, 3)}
+        # 静止フレーム：方向の倍率 × 高さの補正
+        idle_name = "hero_d%d_idle" % d
+        ibbox, iarea = measure(idle_name)
+        idle_scale = scale * (hero_dir_h[d] / ibbox["h"]) if ibbox["h"] > 0 else scale
+        norm[idle_name] = {"x": ibbox["x"], "y": ibbox["y"], "w": ibbox["w"],
+                           "h": ibbox["h"], "area": iarea,
+                           "scale": round(idle_scale, 3)}
     report.append("hero: ref area %.0f, dir areas %s, scales %s"
                   % (hero_ref, [round(a) for a in hero_dir_area],
                      [round((hero_ref / a) ** 0.5, 3) for a in hero_dir_area]))
+    report.append("hero idle: dir heights %s, idle heights %s, idle scales %s"
+                  % ([round(h) for h in hero_dir_h],
+                     [round(measure("hero_d%d_idle" % d)[0]["h"]) for d in range(HERO_DIRS)],
+                     [round(norm["hero_d%d_idle" % d]["scale"], 3) for d in range(HERO_DIRS)]))
 
     # 8方向の敵：方向＝1フレーム。8方向の面積の中央値を基準にする。
     for kind in DIR8_KINDS:

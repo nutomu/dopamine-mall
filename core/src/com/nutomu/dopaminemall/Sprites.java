@@ -233,9 +233,20 @@ public class Sprites {
         return cached("hero_d" + dir + "_f" + frame);
     }
 
+    /** 主人公の向きに対応する静止スプライト（止まっているときに使う）。
+     * Spritefy方式の主人公v2はマスター参照から作った静止フレームを持つ。 */
+    public Texture heroIdleTexture(int dir) {
+        return cached("hero_d" + dir + "_idle");
+    }
+
     /** 主人公の向きと歩行フレームに対応するスプライト名（デバッグ表示用）。 */
     public String heroSpriteName(int dir, int frame) {
         return "hero_d" + dir + "_f" + frame;
+    }
+
+    /** 主人公の向きに対応する静止スプライト名（デバッグ表示用）。 */
+    public String heroIdleSpriteName(int dir) {
+        return "hero_d" + dir + "_idle";
     }
 
     /** 主人公の歩行フレーム数（デバッグ表示用）。 */

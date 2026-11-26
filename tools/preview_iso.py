@@ -179,7 +179,8 @@ def draw_debug_preview():
     scales = "倍率： " + " ".join("%.2f" % norm_scale("hero_d%d_f0" % dd) for dd in range(8))
     d.text((cx, 108), scales, font=f_small, fill=(180, 180, 180), anchor="ma")
     dirs = ["南", "南西", "西", "北西", "北", "北東", "東", "南東"]
-    rows = [("停止", "hero_d%d_f0"), ("歩行", "hero_d%d_f1"), ("武器使用", "hero_d%d_f2")]
+    # 停止の行は静止フレーム（idle）、歩行・武器使用の行は歩行フレームを使う
+    rows = [("停止", "hero_d%d_idle"), ("歩行", "hero_d%d_f1"), ("武器使用", "hero_d%d_f2")]
     col_w = W // 8
     row_feet = [300, 440, 580]
     row_label_y = [200, 340, 480]

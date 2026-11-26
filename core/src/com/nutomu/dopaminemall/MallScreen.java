@@ -1064,10 +1064,15 @@ public class MallScreen implements Screen, InputProcessor {
     }
 
     /** デバッグモードで表示中のキャラクターの、向きと行に応じたスプライト名。
-     * row は 0=停止、1=歩行、2=武器使用。歩行は frame で切り替える。 */
+     * row は 0=停止、1=歩行、2=武器使用。歩行は frame で切り替える。
+     * 主人公は停止・武器使用の行に静止フレーム（idle）を使い、歩行の行だけ
+     * 歩行フレームを使う。 */
     private String debugSpriteName(int dir, int row, int frame) {
         if (debugIsHero()) {
-            return sprites.heroSpriteName(dir, frame % sprites.heroFrameCount());
+            if (row == 1) {
+                return sprites.heroSpriteName(dir, frame % sprites.heroFrameCount());
+            }
+            return sprites.heroIdleSpriteName(dir);
         }
         Enemy.Kind kind = debugKind();
         if (sprites.hasDirectionSprites(kind)) {
@@ -1627,6 +1632,7 @@ public class MallScreen implements Screen, InputProcessor {
     }
 
     /** プレイヤーを補間位置に描く（歩行時の上下動と歩行フレームつき）。
+     * 止まっているときは静止フレーム、移動の補間中は歩行フレームを使う。
      * 方向ごとの表示サイズを正規化し、足元に柔らかい影を描く。 */
     private void drawPlayer(float bob) {
         float px = tileX(playerRx);
@@ -1642,8 +1648,17 @@ public class MallScreen implements Screen, InputProcessor {
             px += d[0] * mag * TILE;
             py += -d[1] * mag * TILE;
         }
-        sprites.drawCharacter(batch,
-                sprites.heroSpriteName(playerFacing, walkFrame()), px, py, 64);
+        String name = playerMoving()
+                ? sprites.heroSpriteName(playerFacing, walkFrame())
+                : sprites.heroIdleSpriteName(playerFacing);
+        sprites.drawCharacter(batch, name, px, py, 64);
+    }
+
+    /** プレイヤーが移動の補間中かどうか（歩行フレームと静止の切り替え用）。 */
+    private boolean playerMoving() {
+        float dx = playerX - playerRx;
+        float dy = playerY - playerRy;
+        return Math.sqrt(dx * dx + dy * dy) > 0.01f && moveDist > 0f;
     }
 
     /** フロアタイプごとの床の色調（スプライトの色に掛ける）。 */
@@ -1743,14 +1758,14 @@ public class MallScreen implements Screen, InputProcessor {
     }
 
     /** 歩行フレーム（0〜3）：1歩で2フレーム進む。1歩目はフレーム0→1、
-     * 2歩目はフレーム2→3。止まっているときは0。 */
+     * 2歩目はフレーム2→3。止まっているときは0（静止フレームを使うため）。 */
     private int walkFrame() {
+        if (!playerMoving()) {
+            return 0;
+        }
         float dx = playerX - playerRx;
         float dy = playerY - playerRy;
         float dist = (float) Math.sqrt(dx * dx + dy * dy);
-        if (dist <= 0.01f || moveDist <= 0f) {
-            return 0;
-        }
         float progress = 1f - dist / moveDist;
         int base = (walkStep % 2 == 0) ? 0 : 2;
         return progress < 0.5f ? base : base + 1;
