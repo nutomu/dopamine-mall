@@ -48,7 +48,10 @@ import java.util.List;
  *   倒さなくても階段で次の階へ進める。ボスは金色で大きく表示し、記号 'B'。
  * - モンスターハウス：フロアごとに10%の確率で、ランダムな場所に敵6〜10体を詰め込む。
  *   入るとメッセージで知らせる。中の敵は視界ルール通り、入るまで見えない。
- * ※ グラフィックスは色分けしたタイルのシンプルな表示（凝った表現は M6 で行う）。
+ * ※ グラフィックスはドット絵スプライト＋最先端の2D演出（サンプルD「霧とランタンの神秘」）。
+ * - tools/generate_tiles.py で生成した 32x32 のドット絵タイルをスプライト描画する。
+ * - 階層別の雰囲気：下層は明るい現代のモール、上層ほど暗く神秘的に（霧・ランタンの光）。
+ * - 移動はターン制のまま、マスからマスへ滑らかに補間するアニメーションを入れる。
  * ※ HUD の文字はデフォルトフォントが ASCII のみのため英字表記。
  * 言語対応（英語・日本語）。
  * - 表示文字列はすべて Localization クラス（翻訳テーブル）で管理する。
@@ -91,12 +94,17 @@ public class MallScreen implements Screen, InputProcessor {
     private SpriteBatch batch;
     private BitmapFont font;
     private BitmapFont hudFont;
+    /** ドット絵スプライト集。 */
+    private Sprites sprites;
     /** 中央揃えで文字を描くためのレイアウト（タイトル画面・ゲームオーバー用）。 */
     private final GlyphLayout layout = new GlyphLayout();
 
     private Floor floor;
     private int playerX;
     private int playerY;
+    /** プレイヤーの描画用補間位置（ピクセル単位）。移動時に目標タイルへ滑らかに寄る。 */
+    private float playerRx;
+    private float playerRy;
     private int floorNumber = 1;
     private int turn = 0;
     private boolean showMinimap = false;
@@ -142,6 +150,8 @@ public class MallScreen implements Screen, InputProcessor {
     private static class Particle {
         float x, y, vx, vy, life, maxLife, size;
         float r, g, b;
+        /** 描画時の不透明度の上限（霧は薄くする）。 */
+        float alpha = 1f;
     }
     private List<Particle> particles = new ArrayList<Particle>();
     /** 攻撃・被弾時の画面フラッシュ（0 になると消える）。 */
@@ -150,6 +160,8 @@ public class MallScreen implements Screen, InputProcessor {
     /** 攻撃したタイルのフラッシュ。 */
     private float attackFlashTimer = 0f;
     private int attackFlashX, attackFlashY;
+    /** 霧の発生間隔を測るタイマー（上層の雰囲気用）。 */
+    private float fogTimer = 0f;
 
     public MallScreen(DopamineMallGame game) {
         this.game = game;
@@ -166,6 +178,7 @@ public class MallScreen implements Screen, InputProcessor {
         Fonts.load();
         font = Fonts.font;
         hudFont = Fonts.hudFont;
+        sprites = new Sprites();
         loadFloor();
         music.load();
         music.playTitle();
@@ -179,6 +192,8 @@ public class MallScreen implements Screen, InputProcessor {
         floor = FloorGenerator.generate(floorNumber);
         playerX = floor.startX;
         playerY = floor.startY;
+        playerRx = playerX * TILE;
+        playerRy = playerY * TILE;
         enemies = FloorGenerator.spawnEnemies(floor, floorNumber);
         items = FloorGenerator.spawnItems(floor, floorNumber, enemies);
         isBossFloor = floorNumber % 5 == 0;
@@ -293,12 +308,12 @@ public class MallScreen implements Screen, InputProcessor {
         }
     }
 
-    /** カメラをプレイヤーに追従させる（フロアの端でははみ出さない）。 */
+    /** カメラをプレイヤーに追従させる（フロアの端でははみ出さない）。描画用の補間位置を使う。 */
     private void followCamera() {
         float worldW = floor.w * TILE;
         float worldH = floor.h * TILE;
-        float cx = playerX * TILE + TILE / 2f;
-        float cy = playerY * TILE + TILE / 2f;
+        float cx = playerRx + TILE / 2f;
+        float cy = playerRy + TILE / 2f;
         if (worldW <= VIEW_W) {
             cx = worldW / 2f;
         } else {
@@ -854,11 +869,12 @@ public class MallScreen implements Screen, InputProcessor {
             attackFlashTimer -= delta;
         }
         updateParticles(delta);
+        updateAnimation(delta);
+        updateFog(delta);
 
-        Gdx.gl.glEnable(GL20.GL_BLEND);
-        Gdx.gl.glBlendFunc(GL20.GL_SRC_ALPHA, GL20.GL_ONE_MINUS_SRC_ALPHA);
-        shapes.setProjectionMatrix(camera.combined);
-        shapes.begin(ShapeRenderer.ShapeType.Filled);
+        // タイルと登場人物をドット絵スプライトで描く
+        batch.setProjectionMatrix(camera.combined);
+        batch.begin();
         int x0 = Math.max(0, (int) ((camera.position.x - VIEW_W / 2f) / TILE) - 1);
         int x1 = Math.min(floor.w - 1, (int) ((camera.position.x + VIEW_W / 2f) / TILE) + 1);
         int y0 = Math.max(0, (int) ((camera.position.y - VIEW_H / 2f) / TILE) - 1);
@@ -873,33 +889,45 @@ public class MallScreen implements Screen, InputProcessor {
             if (!floor.visited[it.x][it.y]) {
                 continue;
             }
-            shapes.setColor(it.kind.r, it.kind.g, it.kind.b, 1f);
-            shapes.circle(it.x * TILE + TILE / 2f, it.y * TILE + TILE / 2f, TILE * 0.22f);
+            batch.draw(sprites.itemTexture(it.kind),
+                    it.x * TILE + TILE * 0.2f, it.y * TILE + TILE * 0.2f,
+                    TILE * 0.6f, TILE * 0.6f);
         }
-        // 敵（行った場所にいる敵だけ表示する。ボスは金色で大きく表示する）
+        // 敵（行った場所にいる敵だけ表示する。ボスは大きく表示する）
         for (Enemy e : enemies) {
             if (!floor.visited[e.x][e.y]) {
                 continue;
             }
-            if (e.isBoss) {
-                shapes.setColor(1f, 0.85f, 0.2f, 1f);
-                shapes.circle(e.x * TILE + TILE / 2f, e.y * TILE + TILE / 2f, TILE * 0.38f);
-            } else {
-                shapes.setColor(e.kind.r, e.kind.g, e.kind.b, 1f);
-                shapes.circle(e.x * TILE + TILE / 2f, e.y * TILE + TILE / 2f, TILE * 0.30f);
-            }
+            float size = e.isBoss ? TILE * 1.4f : TILE * 0.85f;
+            float ox = e.rx + TILE / 2f - size / 2f;
+            float oy = e.ry + TILE / 2f - size / 2f;
+            batch.draw(sprites.enemyTexture(e.kind), ox, oy, size, size);
         }
-        // プレイヤー（黄色い円）
-        shapes.setColor(1f, 0.8f, 0.2f, 1f);
-        shapes.circle(playerX * TILE + TILE / 2f, playerY * TILE + TILE / 2f, TILE * 0.32f);
-        // プレイヤーを中心とした柔らかい光（同心円の薄い光。視界ルールは変えない）
-        float pcx = playerX * TILE + TILE / 2f;
-        float pcy = playerY * TILE + TILE / 2f;
-        shapes.setColor(1f, 0.9f, 0.5f, 0.10f);
+        // プレイヤー（歩行時の上下動つき）
+        float bob = playerBob();
+        batch.draw(sprites.player, playerRx, playerRy + bob, TILE, TILE);
+        batch.end();
+
+        // 階層別の雰囲気オーバーレイ＋光＋パーティクル
+        Gdx.gl.glEnable(GL20.GL_BLEND);
+        Gdx.gl.glBlendFunc(GL20.GL_SRC_ALPHA, GL20.GL_ONE_MINUS_SRC_ALPHA);
+        shapes.setProjectionMatrix(camera.combined);
+        shapes.begin(ShapeRenderer.ShapeType.Filled);
+        float[] ov = themeOverlay();
+        if (ov[3] > 0) {
+            shapes.setColor(ov[0], ov[1], ov[2], ov[3]);
+            shapes.rect(camera.position.x - VIEW_W / 2f, camera.position.y - VIEW_H / 2f,
+                    VIEW_W, VIEW_H);
+        }
+        // プレイヤーを中心とした柔らかい光（上層ほど強く。視界ルールは変えない）
+        float ls = lightStrength();
+        float pcx = playerRx + TILE / 2f;
+        float pcy = playerRy + TILE / 2f + bob;
+        shapes.setColor(1f, 0.85f, 0.45f, 0.10f * ls);
         shapes.circle(pcx, pcy, TILE * 1.3f);
-        shapes.setColor(1f, 0.9f, 0.5f, 0.05f);
+        shapes.setColor(1f, 0.85f, 0.45f, 0.05f * ls);
         shapes.circle(pcx, pcy, TILE * 2.6f);
-        shapes.setColor(1f, 0.9f, 0.5f, 0.025f);
+        shapes.setColor(1f, 0.85f, 0.45f, 0.025f * ls);
         shapes.circle(pcx, pcy, TILE * 4.0f);
         // 攻撃したタイルのフラッシュ
         if (attackFlashTimer > 0) {
@@ -907,36 +935,14 @@ public class MallScreen implements Screen, InputProcessor {
             shapes.circle(attackFlashX * TILE + TILE / 2f,
                     attackFlashY * TILE + TILE / 2f, TILE * 0.38f);
         }
-        // パーティクル（きらめき・撃破時の破片）
+        // パーティクル（きらめき・撃破時の破片・霧）
         for (Particle p : particles) {
-            float alpha = Math.max(0f, p.life / p.maxLife);
+            float alpha = Math.max(0f, p.life / p.maxLife) * p.alpha;
             shapes.setColor(p.r, p.g, p.b, alpha);
             shapes.circle(p.x, p.y, p.size);
         }
         shapes.end();
         Gdx.gl.glDisable(GL20.GL_BLEND);
-
-        batch.setProjectionMatrix(camera.combined);
-        batch.begin();
-        for (Item it : items) {
-            if (!floor.visited[it.x][it.y]) {
-                continue;
-            }
-            font.setColor(Color.BLACK);
-            font.draw(batch, String.valueOf(it.kind.symbol),
-                    it.x * TILE + TILE / 2f - 11, it.y * TILE + TILE / 2f + 14);
-        }
-        for (Enemy e : enemies) {
-            if (!floor.visited[e.x][e.y]) {
-                continue;
-            }
-            font.setColor(Color.BLACK);
-            font.draw(batch, String.valueOf(e.kind.symbol),
-                    e.x * TILE + TILE / 2f - 11, e.y * TILE + TILE / 2f + 14);
-        }
-        font.setColor(Color.BLACK);
-        font.draw(batch, "@", playerX * TILE + TILE / 2f - 13, playerY * TILE + TILE / 2f + 15);
-        batch.end();
 
         drawHud();
         if (showMinimap) {
@@ -1001,72 +1007,134 @@ public class MallScreen implements Screen, InputProcessor {
         f.draw(batch, text, cx - layout.width / 2f, y);
     }
 
+    /** タイルをドット絵スプライトで描く（batch.begin() の中で呼ぶこと）。 */
     private void drawTile(int x, int y) {
         float px = x * TILE;
         float py = y * TILE;
         if (!floor.visited[x][y]) {
-            // 未踏の場所は暗くする（壁や床も含めて見えない）
-            shapes.setColor(0.03f, 0.03f, 0.05f, 1f);
-            shapes.rect(px, py, TILE - 1, TILE - 1);
+            // 未踏の場所は暗くする（スプライトをほぼ黒く着色して描く）
+            batch.setColor(0.05f, 0.05f, 0.08f, 1f);
+            batch.draw(sprites.terrainTexture(floor.tiles[x][y]), px, py, TILE, TILE);
+            batch.setColor(1f, 1f, 1f, 1f);
             return;
         }
         Floor.Tile t = floor.tiles[x][y];
-        switch (t) {
-            case WALL:
-                shapes.setColor(0.35f, 0.30f, 0.45f, 1f);
-                break;
-            case SHELF:
-                shapes.setColor(0.45f, 0.32f, 0.18f, 1f);
-                break;
-            case MACHINE:
-                shapes.setColor(0.65f, 0.25f, 0.60f, 1f);
-                break;
-            case TABLE:
-                shapes.setColor(0.75f, 0.50f, 0.20f, 1f);
-                break;
-            case COUNTER:
-                shapes.setColor(0.20f, 0.60f, 0.55f, 1f);
-                break;
-            case STAGE:
-                shapes.setColor(0.80f, 0.65f, 0.20f, 1f);
-                break;
-            case SEAT:
-                shapes.setColor(0.35f, 0.40f, 0.55f, 1f);
-                break;
-            case ESCALATOR:
-                shapes.setColor(0.20f, 0.85f, 0.35f, 1f);
-                break;
-            case STAIRS:
-                shapes.setColor(0.20f, 0.45f, 0.90f, 1f);
-                break;
-            case FLOOR:
-            default:
-                float[] c = floorColor();
-                if ((x + y) % 2 == 0) {
-                    shapes.setColor(c[0], c[1], c[2], 1f);
-                } else {
-                    shapes.setColor(c[0] * 0.85f, c[1] * 0.85f, c[2] * 0.85f, 1f);
-                }
-                break;
+        if (t == Floor.Tile.FLOOR) {
+            // フロアタイプごとにわずかに色調を変える
+            float[] c = floorTint();
+            batch.setColor(c[0], c[1], c[2], 1f);
+            batch.draw(sprites.floorTile(x, y), px, py, TILE, TILE);
+            batch.setColor(1f, 1f, 1f, 1f);
+        } else {
+            batch.draw(sprites.terrainTexture(t), px, py, TILE, TILE);
         }
-        shapes.rect(px, py, TILE - 1, TILE - 1);
     }
 
-    /** フロアタイプごとの床の基本色。 */
-    private float[] floorColor() {
+    /** フロアタイプごとの床の色調（スプライトの色に掛ける）。 */
+    private float[] floorTint() {
         switch (floor.type) {
             case SUPERMARKET:
-                return new float[]{0.20f, 0.26f, 0.20f};
+                return new float[]{0.9f, 1f, 0.9f};
             case GAME_CENTER:
-                return new float[]{0.20f, 0.16f, 0.26f};
+                return new float[]{0.95f, 0.9f, 1f};
             case FOOD_COURT:
-                return new float[]{0.28f, 0.22f, 0.16f};
+                return new float[]{1f, 0.95f, 0.85f};
             case EVENT:
-                return new float[]{0.16f, 0.18f, 0.28f};
+                return new float[]{0.9f, 0.95f, 1f};
             case TENANT:
             default:
-                return new float[]{0.24f, 0.22f, 0.20f};
+                return new float[]{1f, 1f, 1f};
         }
+    }
+
+    /** 階層別の雰囲気：上層ほど暗く神秘的にするオーバーレイの色と不透明度。 */
+    private float[] themeOverlay() {
+        if (floorNumber <= 4) {
+            // 下層：明るい現代のモール（オーバーレイなし）
+            return new float[]{1f, 0.96f, 0.85f, 0f};
+        }
+        if (floorNumber <= 9) {
+            // 中層：やや落ち着いた光
+            return new float[]{0.85f, 0.88f, 1f, 0.08f};
+        }
+        if (floorNumber <= 14) {
+            // 上層：暗めで霧がかった感じ
+            return new float[]{0.10f, 0.14f, 0.28f, 0.20f};
+        }
+        // 最上層：サンプルD「霧とランタンの神秘」
+        return new float[]{0.05f, 0.08f, 0.22f, 0.30f};
+    }
+
+    /** プレイヤーを中心とした光の強さ（上層ほど強く）。 */
+    private float lightStrength() {
+        if (floorNumber <= 4) {
+            return 1f;
+        }
+        if (floorNumber <= 9) {
+            return 1.2f;
+        }
+        if (floorNumber <= 14) {
+            return 1.6f;
+        }
+        return 2f;
+    }
+
+    /** 移動アニメーション：描画位置を目標タイルへ滑らかに寄せる（約0.12秒で1マス）。 */
+    private void updateAnimation(float delta) {
+        float speed = TILE / 0.12f;
+        float step = speed * delta;
+        playerRx = approach(playerRx, playerX * TILE, step);
+        playerRy = approach(playerRy, playerY * TILE, step);
+        for (Enemy e : enemies) {
+            e.rx = approach(e.rx, e.x * TILE, step);
+            e.ry = approach(e.ry, e.y * TILE, step);
+        }
+    }
+
+    /** 値を目標値へ step だけ近づける（行き過ぎたら目標値にする）。 */
+    private float approach(float current, float target, float step) {
+        if (Math.abs(target - current) <= step) {
+            return target;
+        }
+        return current + Math.signum(target - current) * step;
+    }
+
+    /** 歩行時の上下動：移動の補間中だけ小さく跳ねる。 */
+    private float playerBob() {
+        float dx = playerX * TILE - playerRx;
+        float dy = playerY * TILE - playerRy;
+        float dist = (float) Math.sqrt(dx * dx + dy * dy);
+        if (dist <= 0.01f) {
+            return 0f;
+        }
+        float progress = 1f - dist / TILE;
+        return (float) Math.sin(progress * Math.PI) * 3f;
+    }
+
+    /** 上層の霧：カメラの視野内にゆっくり漂う大きな薄い霧を発生させる。 */
+    private void updateFog(float delta) {
+        if (floorNumber < 10) {
+            return;
+        }
+        fogTimer -= delta;
+        if (fogTimer > 0) {
+            return;
+        }
+        fogTimer = 0.7f + (float) Math.random() * 0.8f;
+        Particle p = new Particle();
+        float vx = camera.position.x - VIEW_W / 2f;
+        float vy = camera.position.y - VIEW_H / 2f;
+        p.x = vx + (float) (Math.random() * VIEW_W);
+        p.y = vy + (float) (Math.random() * VIEW_H);
+        p.vx = 6 + (float) (Math.random() * 10);
+        p.vy = 2 + (float) (Math.random() * 4);
+        p.maxLife = p.life = 5f + (float) Math.random() * 3f;
+        p.size = 60f + (float) (Math.random() * 70f);
+        p.r = 0.75f;
+        p.g = 0.8f;
+        p.b = 0.9f;
+        p.alpha = 0.05f;
+        particles.add(p);
     }
 
     /** HUD：階数とフロアタイプ名、HP・攻撃力・防御力・装備、ターン数、キー案内、店内放送、メッセージ。 */
@@ -1289,6 +1357,9 @@ public class MallScreen implements Screen, InputProcessor {
     @Override
     public void dispose() {
         music.dispose();
+        if (sprites != null) {
+            sprites.dispose();
+        }
         shapes.dispose();
         batch.dispose();
         Fonts.dispose();

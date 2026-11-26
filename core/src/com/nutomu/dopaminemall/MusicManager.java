@@ -4,10 +4,10 @@ import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.audio.Music;
 
 /**
- * M6：BGM 管理。生成チップチューンの WAV ループを再生する。
- * - title.wav：タイトル画面の明るくノリのいい曲
- * - dungeon.wav：ダンジョンの控えめな環境音楽
- * - boss.wav：ボスフロア／モンスターハウスの緊迫感のある曲
+ * M6：BGM 管理。生成チップチューンの OGG ループを再生する（WAV から変換済み）。
+ * - title.ogg：タイトル画面の明るくノリのいい曲
+ * - dungeon.ogg：ダンジョンの控えめな環境音楽
+ * - boss.ogg：ボスフロア／モンスターハウスの緊迫感のある曲
  * アセットが読めない環境でも例外を握りつぶし、無音でゲームを続ける。
  */
 public class MusicManager {
@@ -24,9 +24,9 @@ public class MusicManager {
     /** 3曲を読み込む。失敗した場合は無音モードになる。 */
     public void load() {
         try {
-            title = Gdx.audio.newMusic(Gdx.files.internal("music/title.wav"));
-            dungeon = Gdx.audio.newMusic(Gdx.files.internal("music/dungeon.wav"));
-            boss = Gdx.audio.newMusic(Gdx.files.internal("music/boss.wav"));
+            title = Gdx.audio.newMusic(Gdx.files.internal("music/title.ogg"));
+            dungeon = Gdx.audio.newMusic(Gdx.files.internal("music/dungeon.ogg"));
+            boss = Gdx.audio.newMusic(Gdx.files.internal("music/boss.ogg"));
             title.setLooping(true);
             dungeon.setLooping(true);
             boss.setLooping(true);

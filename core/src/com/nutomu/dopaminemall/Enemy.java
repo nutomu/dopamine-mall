@@ -83,6 +83,9 @@ public class Enemy {
     public final Kind kind;
     public int x;
     public int y;
+    /** 描画用の補間位置（ピクセル単位）。移動アニメーションで目標タイルへ滑らかに寄る。 */
+    public float rx;
+    public float ry;
     public int hp;
     public final int maxHp;
     public final int attack;
@@ -100,6 +103,8 @@ public class Enemy {
         this.x = x;
         this.y = y;
         this.isBoss = isBoss;
+        this.rx = x * MallScreen.TILE;
+        this.ry = y * MallScreen.TILE;
         // 階が上がるほど少し強くなる：HP +2／階、攻撃 +1／2階。
         // ボスは通常敵の約5倍のHP、攻撃は約1.5倍。
         int scaledHp = kind.baseHp + (floorNumber - 1) * 2;
