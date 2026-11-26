@@ -49,11 +49,12 @@ import java.util.List;
  *   倒さなくても階段で次の階へ進める。ボスは金色で大きく表示し、記号 'B'。
  * - モンスターハウス：フロアごとに10%の確率で、ランダムな場所に敵6〜10体を詰め込む。
  *   入るとメッセージで知らせる。中の敵は視界ルール通り、入るまで見えない。
- * ※ グラフィックスは2.5Dアイソメトリック描画（シムシティー／GTA2風の斜め見降ろし）。
+ * ※ グラフィックスは風来のシレン風の見下ろし描画（縦方向が真っすぐ）。
  * - 画像生成モデルで作ったスプライトシートを tools/slice_sheets.py で切り出した
- *   PNG（android/assets/sprites2d/）を描画する。床はひし形タイルをアイソメ
- *   トリック投影で並べ、壁・家具・キャラクターは立った姿で描く。
- * - 描画順はペインター法（x+y の昇順）。カメラはプレイヤーを追従する。
+ *   PNG（android/assets/sprites2d/）を描画する。1マス＝1つのマップチップ
+ *   （壁チップは上面と前面を1枚に含む）。床・壁は四角いチップをグリッド通りに
+ *   並べ、家具・キャラクターは立った姿で描く。
+ * - 描画順はペインター法（行ごとに上から下へ）。カメラはプレイヤーを追従する。
  * - 階層別の雰囲気：下層は明るい現代のモール、上層ほど暗く神秘的に（霧・ランタンの光）。
  * - 移動はターン制のまま、マスからマスへ滑らかに補間するアニメーションを入れる。
  * ※ HUD の文字はデフォルトフォントが ASCII のみのため英字表記。
@@ -83,26 +84,25 @@ import java.util.List;
  *   A／決定ボタンで使う・装備する、B／Back ボタンで閉じる。選んだ項目は
  *   ハイライト表示される。開閉・項目移動だけではターンを消費しない。
  * - Fire TV リモコンの Back ボタンがアプリに届くよう setCatchKey(BACK) する。
- * 8方向移動と向き・アニメーション、連結した壁。
- * - 移動は8方向。矢印キー／WASD は画面の方向（上＝北(-1,-1)、下＝南(+1,+1)、
- *   左＝西(-1,+1)、右＝東(+1,-1)）に進み、残りの4方向は Q／E／Z／C キーで
- *   移動する（Q＝北西(-1,0)、E＝北東(0,-1)、Z＝南西(0,+1)、C＝南東(+1,0)）。
+ * 8方向移動と向き・アニメーション、シレン風見下ろし。
+ * - 移動は8方向。矢印キー／WASD は画面の方向（上＝北(0,-1)、下＝南(0,1)、
+ *   左＝西(-1,0)、右＝東(1,0)）に進み、残りの4方向は Q／E／Z／C キーで
+ *   移動する（Q＝北西(-1,-1)、E＝北東(1,-1)、Z＝南西(-1,1)、C＝南東(1,1)）。
  *   ゲームパッド・Fire TV リモコンの十字キーは画面の4方向に対応する。
  *   斜め移動も1ターンで、移動先に壁や敵があれば移動できない。
  * - プレイヤーと敵に向き（0=南〜7=南東、時計回り）を持たせ、移動・攻撃した
  *   方向を向く。向きに合った8方向スプライトを描く（ない種類は1枚絵のまま）。
  *   歩行時は移動の補間（約0.12秒）に合わせて歩行フレームを切り替える
- *   （主人公は2フレーム交互、敵は上下の跳ね＋向きの切り替え）。
+ *   （主人公は足を大きく振った2フレームを交互に、敵は上下の跳ね＋向きの切り替え）。
  *   攻撃時は攻撃方向へ素早く突進して戻る＋斬撃エフェクト＋対象のフラッシュ。
- * - 壁は柱ではなくひとつながりに描く。上面は平らなひし形タイルを継ぎ目なく
- *   並べ、前面は壁の並びの南側の縁にだけバンドを帯状に描く（3タイル区画に
- *   分割し、バンドスプライトを回転させて上面の32°に合わせる）。角は角用の
- *   スプライトでつなげる。壁の高さ（WALL_H=48）は従来の柱と同じ88px相当。
+ * - 壁は1マス＝1チップで描く（上面と前面を1枚に含む壁チップをタイルごとに
+ *   そのまま1枚描くだけ）。面分割（上面・前面バンド・角）はやめた。
  */
 public class MallScreen implements Screen, InputProcessor {
-    /** 8方向のグリッド移動量。向き 0=南、1=南西、2=西、3=北西、4=北、5=北東、6=東、7=南東。 */
-    static final int[][] DIR_DXY = {{1, 1}, {0, 1}, {-1, 1}, {-1, 0},
-            {-1, -1}, {0, -1}, {1, -1}, {1, 0}};
+    /** 8方向のグリッド移動量。向き 0=南、1=南西、2=西、3=北西、4=北、5=北東、6=東、7=南東。
+     * 画面の上＝北（y が減る方向）、下＝南（y が増える方向）。 */
+    static final int[][] DIR_DXY = {{0, 1}, {-1, 1}, {-1, 0}, {-1, -1},
+            {0, -1}, {1, -1}, {1, 0}, {1, 1}};
 
     /** グリッドの移動量 (dx, dy) に対応する向き（0〜7）を返す。 */
     static int directionOf(int dx, int dy) {
@@ -119,33 +119,28 @@ public class MallScreen implements Screen, InputProcessor {
         return Math.max(Math.abs(x1 - x2), Math.abs(y1 - y2));
     }
 
-    /** アイソメトリックタイルの画面サイズ（ひし形タイルの幅・高さ）。 */
-    static final int ISO_TW = 64;
-    static final int ISO_TH = 40;
+    /** 1マスの画面サイズ（四角いチップの幅・高さ。シレン風見下ろし）。 */
+    static final int TILE = 64;
     static final int VIEW_W = 1280;
     static final int VIEW_H = 800;
     /** 視界の広さ（プレイヤーから歩いて何マス先まで「行った場所」にするか）。 */
     static final int SIGHT = 8;
-    /** 壁の高さ（タイル中心から壁上面ダイヤまでの垂直距離）。 */
-    static final int WALL_H = 48;
-    /** 壁の前面バンドの上面の長さ（1タイル分、sqrt(32^2+20^2)）。 */
-    static final float WALL_EDGE = 37.7f;
 
-    /** タイル座標 (tx, ty) をアイソメトリックの画面 X 座標に変換する。 */
-    static float isoX(float tx, float ty) {
-        return (tx - ty) * ISO_TW / 2f;
+    /** タイル座標 tx を画面 X 座標（タイル中心）に変換する。 */
+    static float tileX(float tx) {
+        return tx * TILE;
     }
 
-    /** タイル座標 (tx, ty) をアイソメトリックの画面 Y 座標に変換する。 */
-    static float isoY(float tx, float ty) {
-        return -(tx + ty) * ISO_TH / 2f;
+    /** タイル座標 ty を画面 Y 座標（タイル中心）に変換する。
+     * libGDX のワールド座標は Y が上向きなので、グリッドの y が増える
+     * （画面の下）ほど Y は小さくなる。 */
+    static float tileY(float ty) {
+        return -ty * TILE;
     }
 
-    /** アイソメトリックの画面座標をタイル座標に逆変換する（タップ移動用）。 */
-    static float[] isoToTile(float wx, float wy) {
-        float tx = wx / ISO_TW - wy / ISO_TH;
-        float ty = -wy / ISO_TH - wx / ISO_TW;
-        return new float[]{tx, ty};
+    /** 画面座標をタイル座標に逆変換する（タップ移動用）。 */
+    static float[] screenToTile(float wx, float wy) {
+        return new float[]{wx / TILE, -wy / TILE};
     }
 
     private final DopamineMallGame game;
@@ -254,11 +249,6 @@ public class MallScreen implements Screen, InputProcessor {
     private int attackFlashX, attackFlashY;
     /** 霧の発生間隔を測るタイマー（上層の雰囲気用）。 */
     private float fogTimer = 0f;
-    /** 壁の連結描画用：南側の角タイルかどうか。 */
-    private boolean[][] wallCorner;
-    /** 壁の連結描画用：SE面・SW面の走行の長さ。最後のタイルにだけ長さが入る。 */
-    private int[][] seRunLen;
-    private int[][] swRunLen;
 
     public MallScreen(DopamineMallGame game) {
         this.game = game;
@@ -295,7 +285,6 @@ public class MallScreen implements Screen, InputProcessor {
         moveDist = 0f;
         attackLungeTimer = 0f;
         slashTimer = 0f;
-        analyzeWalls();
         enemies = FloorGenerator.spawnEnemies(floor, floorNumber);
         items = FloorGenerator.spawnItems(floor, floorNumber, enemies);
         spawnProps();
@@ -314,69 +303,6 @@ public class MallScreen implements Screen, InputProcessor {
         if (!titleScreen) {
             updateMusic();
         }
-    }
-
-    /** 壁の連結描画のための解析。角タイルと、SE面・SW面の走行（run）を求める。
-     * 走行は最後のタイルに長さを入れる（バンドは最後のタイルで描く。走行中の
-     * 壁タイルの床ダイヤはバンドより先に描かれるため、バンドがそれを隠す）。
-     * SE面の走行は x 一定・y 方向、SW面の走行は y 一定・x 方向。 */
-    private void analyzeWalls() {
-        wallCorner = new boolean[floor.w][floor.h];
-        seRunLen = new int[floor.w][floor.h];
-        swRunLen = new int[floor.w][floor.h];
-        for (int y = 0; y < floor.h; y++) {
-            for (int x = 0; x < floor.w; x++) {
-                if (!isWallTile(x, y)) {
-                    continue;
-                }
-                boolean se = !isWallTile(x + 1, y);
-                boolean sw = !isWallTile(x, y + 1);
-                if (se && sw) {
-                    wallCorner[x][y] = true;
-                }
-            }
-        }
-        for (int y = 0; y < floor.h; y++) {
-            for (int x = 0; x < floor.w; x++) {
-                if (!isWallTile(x, y) || wallCorner[x][y]) {
-                    continue;
-                }
-                // SE面の走行の開始：1つ上のタイルが壁でない／角／南東面が露出していない場合
-                if (!isWallTile(x + 1, y) && (!isWallTile(x, y - 1)
-                        || isCornerTile(x, y - 1) || isWallTile(x + 1, y - 1))) {
-                    int n = 0;
-                    while (isWallTile(x, y + n) && !isCornerTile(x, y + n)
-                            && !isWallTile(x + 1, y + n)) {
-                        n++;
-                    }
-                    if (n > 0) {
-                        seRunLen[x][y + n - 1] = n;
-                    }
-                }
-                // SW面の走行の開始：1つ左のタイルが壁でない／角／南西面が露出していない場合
-                if (!isWallTile(x, y + 1) && (!isWallTile(x - 1, y)
-                        || isCornerTile(x - 1, y) || isWallTile(x - 1, y + 1))) {
-                    int n = 0;
-                    while (isWallTile(x + n, y) && !isCornerTile(x + n, y)
-                            && !isWallTile(x + n, y + 1)) {
-                        n++;
-                    }
-                    if (n > 0) {
-                        swRunLen[x + n - 1][y] = n;
-                    }
-                }
-            }
-        }
-    }
-
-    /** (x, y) が壁タイルかどうか（範囲外は壁でない）。 */
-    private boolean isWallTile(int x, int y) {
-        return floor.inBounds(x, y) && floor.tiles[x][y] == Floor.Tile.WALL;
-    }
-
-    /** (x, y) が南側の角タイルかどうか（範囲外は角でない）。 */
-    private boolean isCornerTile(int x, int y) {
-        return floor.inBounds(x, y) && wallCorner[x][y];
     }
 
     /** 装飾用の小物をフロアの空いている床タイルに数個配置する（移動を妨げない）。 */
@@ -521,13 +447,13 @@ public class MallScreen implements Screen, InputProcessor {
 
     /** カメラをプレイヤーに追従させる（フロアの端でははみ出さない）。描画用の補間位置を使う。 */
     private void followCamera() {
-        float px = isoX(playerRx, playerRy);
-        float py = isoY(playerRx, playerRy);
-        // アイソメトリック世界の範囲
-        float minX = -(floor.h - 1) * ISO_TW / 2f;
-        float maxX = (floor.w - 1) * ISO_TW / 2f;
-        float minY = -(floor.w + floor.h - 2) * ISO_TH / 2f;
-        float maxY = 96f; // 壁などの高いスプライトが画面上にはみ出す分
+        float px = tileX(playerRx);
+        float py = tileY(playerRy);
+        // 見下ろし世界の範囲（タイル中心 ± 半タイル）
+        float minX = -TILE / 2f;
+        float maxX = (floor.w - 1) * TILE + TILE / 2f;
+        float minY = -(floor.h - 1) * TILE - TILE / 2f;
+        float maxY = TILE / 2f + 96f; // 上の行の家具・キャラクターが画面上にはみ出す分
         float worldW = maxX - minX;
         float worldH = maxY - minY;
         float cx = px;
@@ -934,32 +860,32 @@ public class MallScreen implements Screen, InputProcessor {
             // 矢印キー／WASD は画面の方向に進む（上＝北、下＝南、左＝西、右＝東）。
             case Input.Keys.UP:
             case Input.Keys.W:
-                tryMove(-1, -1);
+                tryMove(0, -1);
                 return true;
             case Input.Keys.DOWN:
             case Input.Keys.S:
-                tryMove(1, 1);
+                tryMove(0, 1);
                 return true;
             case Input.Keys.LEFT:
             case Input.Keys.A:
-                tryMove(-1, 1);
+                tryMove(-1, 0);
                 return true;
             case Input.Keys.RIGHT:
             case Input.Keys.D:
-                tryMove(1, -1);
+                tryMove(1, 0);
                 return true;
             // 残りの4方向は Q／E／Z／C キー（Q＝北西、E＝北東、Z＝南西、C＝南東）。
             case Input.Keys.Q:
-                tryMove(-1, 0);
+                tryMove(-1, -1);
                 return true;
             case Input.Keys.E:
-                tryMove(0, -1);
+                tryMove(1, -1);
                 return true;
             case Input.Keys.Z:
-                tryMove(0, 1);
+                tryMove(-1, 1);
                 return true;
             case Input.Keys.C:
-                tryMove(1, 0);
+                tryMove(1, 1);
                 return true;
             case Input.Keys.SPACE:
             case Input.Keys.PERIOD:
@@ -1041,7 +967,7 @@ public class MallScreen implements Screen, InputProcessor {
         // タップした方向へ1マス進む（斜めは横方向を優先）
         Vector3 v = new Vector3(screenX, screenY, 0);
         viewport.unproject(v);
-        float[] tile = isoToTile(v.x, v.y);
+        float[] tile = screenToTile(v.x, v.y);
         int tx = (int) Math.floor(tile[0] + 0.5f);
         int ty = (int) Math.floor(tile[1] + 0.5f);
         if (!floor.inBounds(tx, ty)) {
@@ -1118,31 +1044,29 @@ public class MallScreen implements Screen, InputProcessor {
         updateAnimation(delta);
         updateFog(delta);
 
-        // タイルと登場人物を2.5Dスプライトで描く（ペインター法：x+y の昇順）
+        // タイルと登場人物を見下ろしスプライトで描く（ペインター法：行ごとに上から下へ）
         float bob = playerBob();
         batch.setProjectionMatrix(camera.combined);
         batch.begin();
-        for (int s = 0; s <= floor.w + floor.h - 2; s++) {
-            for (int x = Math.max(0, s - (floor.h - 1));
-                 x <= Math.min(floor.w - 1, s); x++) {
-                int y = s - x;
-                drawTileIso(x, y);
+        for (int y = 0; y < floor.h; y++) {
+            for (int x = 0; x < floor.w; x++) {
+                drawTile(x, y);
                 Item it = itemAt(x, y);
                 if (it != null && floor.visited[x][y]) {
-                    drawItemIso(it);
+                    drawItem(it);
                 }
             }
-            // この斜め帯にいる敵・プレイヤー（補間位置の x+y で判定）
+            // この行にいる敵・プレイヤー（補間位置の行で判定）
             for (Enemy e : enemies) {
                 if (!floor.visited[e.x][e.y]) {
                     continue;
                 }
-                if ((int) Math.floor(e.rx + e.ry + 0.5f) == s) {
-                    drawCharacterIso(e);
+                if ((int) Math.floor(e.ry + 0.5f) == y) {
+                    drawCharacter(e);
                 }
             }
-            if ((int) Math.floor(playerRx + playerRy + 0.5f) == s) {
-                drawPlayerIso(bob);
+            if ((int) Math.floor(playerRy + 0.5f) == y) {
+                drawPlayer(bob);
             }
         }
         batch.end();
@@ -1154,16 +1078,16 @@ public class MallScreen implements Screen, InputProcessor {
             if (slashTimer > 0) {
                 float alpha = slashTimer / SLASH_TIME;
                 batch.setColor(1f, 1f, 1f, alpha);
-                float sx = isoX(slashX, slashY);
-                float sy = isoY(slashX, slashY);
-                batch.draw(sprites.slash, sx - 32, sy - 8, 64, 64);
+                float sx = tileX(slashX);
+                float sy = tileY(slashY);
+                batch.draw(sprites.slash, sx - 32, sy - 32, 64, 64);
             }
             if (attackFlashTimer > 0) {
                 float alpha = attackFlashTimer / 0.2f;
                 batch.setColor(1f, 1f, 1f, alpha);
-                float fx = isoX(attackFlashX, attackFlashY);
-                float fy = isoY(attackFlashX, attackFlashY);
-                batch.draw(sprites.hitstar, fx - 24, fy - 12, 48, 48);
+                float fx = tileX(attackFlashX);
+                float fy = tileY(attackFlashY);
+                batch.draw(sprites.hitstar, fx - 24, fy - 24, 48, 48);
             }
             batch.setColor(1f, 1f, 1f, 1f);
             batch.end();
@@ -1182,14 +1106,14 @@ public class MallScreen implements Screen, InputProcessor {
         }
         // プレイヤーを中心とした柔らかい光（上層ほど強く。視界ルールは変えない）
         float ls = lightStrength();
-        float pcx = isoX(playerRx, playerRy);
-        float pcy = isoY(playerRx, playerRy) + bob;
+        float pcx = tileX(playerRx);
+        float pcy = tileY(playerRy) + bob;
         shapes.setColor(1f, 0.85f, 0.45f, 0.10f * ls);
-        shapes.circle(pcx, pcy, ISO_TW * 1.3f);
+        shapes.circle(pcx, pcy, TILE * 1.3f);
         shapes.setColor(1f, 0.85f, 0.45f, 0.05f * ls);
-        shapes.circle(pcx, pcy, ISO_TW * 2.6f);
+        shapes.circle(pcx, pcy, TILE * 2.6f);
         shapes.setColor(1f, 0.85f, 0.45f, 0.025f * ls);
-        shapes.circle(pcx, pcy, ISO_TW * 4.0f);
+        shapes.circle(pcx, pcy, TILE * 4.0f);
         // パーティクル（きらめき・撃破時の破片。霧はテクスチャ付きなので後で描く）
         for (Particle p : particles) {
             if (p.tex != null) {
@@ -1197,7 +1121,7 @@ public class MallScreen implements Screen, InputProcessor {
             }
             float alpha = Math.max(0f, p.life / p.maxLife) * p.alpha;
             shapes.setColor(p.r, p.g, p.b, alpha);
-            shapes.circle(isoX(p.x, p.y), isoY(p.x, p.y), p.size);
+            shapes.circle(tileX(p.x), tileY(p.y), p.size);
         }
         shapes.end();
         Gdx.gl.glDisable(GL20.GL_BLEND);
@@ -1213,7 +1137,7 @@ public class MallScreen implements Screen, InputProcessor {
             float w = p.texW;
             float h = w * p.tex.getHeight() / (float) p.tex.getWidth();
             batch.setColor(1f, 1f, 1f, alpha);
-            batch.draw(p.tex, isoX(p.x, p.y) - w / 2f, isoY(p.x, p.y) - h / 2f, w, h);
+            batch.draw(p.tex, tileX(p.x) - w / 2f, tileY(p.y) - h / 2f, w, h);
         }
         batch.setColor(1f, 1f, 1f, 1f);
         batch.end();
@@ -1288,10 +1212,10 @@ public class MallScreen implements Screen, InputProcessor {
     }
 
     /** 地形スプライトをタイルの位置に描く（高さつきの立体物として）。 */
-    private void drawTerrainIso(Floor.Tile t, float px, float py) {
+    private void drawTerrain(Floor.Tile t, float px, float py) {
         switch (t) {
             case WALL:
-                // 壁は drawTileIso から drawWallIso で描く（ここには来ない）
+                // 壁は drawTile から1チップで描く（ここには来ない）
                 break;
             case SHELF:
                 // テナントフロア（ブティック・雑貨店）は本棚、スーパーは商品棚
@@ -1325,177 +1249,52 @@ public class MallScreen implements Screen, InputProcessor {
         }
     }
 
-    /** タイルを2.5Dスプライトで描く（batch.begin() の中で呼ぶこと）。 */
-    private void drawTileIso(int x, int y) {
-        float px = isoX(x, y);
-        float py = isoY(x, y);
+    /** タイルを見下ろしスプライトで描く（batch.begin() の中で呼ぶこと）。
+     * 壁は1マス＝1チップ（上面と前面を1枚に含む壁チップをタイルにそのまま1枚描く）。 */
+    private void drawTile(int x, int y) {
+        float px = tileX(x);
+        float py = tileY(y);
         Floor.Tile t = floor.tiles[x][y];
         if (!floor.visited[x][y]) {
             // 未踏の場所は暗くする（スプライトをほぼ黒く着色して描く）
             batch.setColor(0.05f, 0.05f, 0.08f, 1f);
-            if (t == Floor.Tile.FLOOR) {
+            if (t == Floor.Tile.WALL) {
+                batch.draw(sprites.wall, px - TILE / 2f, py - TILE / 2f, TILE, TILE);
+            } else if (t == Floor.Tile.FLOOR) {
                 batch.draw(sprites.floorTexture(floor.type),
-                        px - ISO_TW / 2f, py - ISO_TH / 2f, ISO_TW, ISO_TH);
-            } else if (t == Floor.Tile.WALL) {
-                batch.draw(sprites.floorTexture(floor.type),
-                        px - ISO_TW / 2f, py - ISO_TH / 2f, ISO_TW, ISO_TH);
-                drawWallIso(x, y, px, py);
+                        px - TILE / 2f, py - TILE / 2f, TILE, TILE);
             } else {
-                drawTerrainIso(t, px, py);
+                batch.draw(sprites.floorTexture(floor.type),
+                        px - TILE / 2f, py - TILE / 2f, TILE, TILE);
+                drawTerrain(t, px, py);
             }
             batch.setColor(1f, 1f, 1f, 1f);
             return;
         }
-        if (t == Floor.Tile.FLOOR) {
+        if (t == Floor.Tile.WALL) {
+            batch.draw(sprites.wall, px - TILE / 2f, py - TILE / 2f, TILE, TILE);
+        } else if (t == Floor.Tile.FLOOR) {
             // フロアタイプごとにわずかに色調を変える
             float[] c = floorTint();
             batch.setColor(c[0], c[1], c[2], 1f);
             batch.draw(sprites.floorTexture(floor.type),
-                    px - ISO_TW / 2f, py - ISO_TH / 2f, ISO_TW, ISO_TH);
+                    px - TILE / 2f, py - TILE / 2f, TILE, TILE);
             batch.setColor(1f, 1f, 1f, 1f);
             // 装飾小物（床タイルに置いたもの）
             Prop prop = propAt(x, y);
             if (prop != null) {
-                drawPropIso(prop, px, py);
+                drawProp(prop, px, py);
             }
-        } else if (t == Floor.Tile.WALL) {
-            // 壁はひとつながりに描く（上面ダイヤ＋前面バンド／角）
+        } else {
+            // 床の下に四角いチップを敷いてから立体物を描く
             batch.draw(sprites.floorTexture(floor.type),
-                    px - ISO_TW / 2f, py - ISO_TH / 2f, ISO_TW, ISO_TH);
-            drawWallIso(x, y, px, py);
-        } else {
-            // 床の下にひし形タイルを敷いてから立体物を描く
-            batch.draw(sprites.floorTexture(floor.type),
-                    px - ISO_TW / 2f, py - ISO_TH / 2f, ISO_TW, ISO_TH);
-            drawTerrainIso(t, px, py);
-        }
-    }
-
-    /**
-     * 壁タイル1枚を描く。上面ダイヤを継ぎ目なく並べ、前面はバンドか角でつなげる。
-     * バンドは走行の最後のタイルで描く（走行中の壁タイルの床ダイヤはバンドより
-     * 先に描かれるため、バンドがそれを隠す）。
-     */
-    private void drawWallIso(int x, int y, float px, float py) {
-        // 上面ダイヤ（継ぎ目なく並ぶ）
-        batch.draw(sprites.wallTop,
-                px - ISO_TW / 2f, py + WALL_H - ISO_TH / 2f, ISO_TW, ISO_TH);
-        if (wallCorner[x][y]) {
-            drawWallCorner(px, py);
-            return;
-        }
-        if (seRunLen[x][y] > 0) {
-            drawWallRunSE(x, y, seRunLen[x][y]);
-        }
-        if (swRunLen[x][y] > 0) {
-            drawWallRunSW(x, y, swRunLen[x][y]);
-        }
-    }
-
-    /** 南側の角タイルに角スプライトを描く。上面ダイヤの南頂点に角の上面の
-     * V 字の谷が来るよう配置する（スプライト 64x72、谷は下から 0.702 の高さ）。 */
-    private void drawWallCorner(float px, float py) {
-        batch.draw(sprites.wallCorner,
-                px - 32f, py + WALL_H - 70.5f, 64f, 72f);
-    }
-
-    /** SE面の走行（x 一定、y 方向）を描く。走行は y1-n+1 .. y1。区画は末尾から配置する。 */
-    private void drawWallRunSE(int x, int y1, int n) {
-        int[] segs = splitSegments(n);
-        int endY = y1;
-        for (int i = segs.length - 1; i >= 0; i--) {
-            int seg = segs[i];
-            // 区画の最後のタイルの E_top（上面の左下端）がバンドのアンカー
-            float tx = isoX(x, endY) + ISO_TW / 2f;
-            float ty = isoY(x, endY) + WALL_H;
-            drawWallBand(tx, ty, seg, true);
-            endY -= seg;
-        }
-    }
-
-    /** SW面の走行（y 一定、x 方向）を描く。走行は x1-n+1 .. x1。区画は先頭から配置する。 */
-    private void drawWallRunSW(int x1, int y, int n) {
-        int[] segs = splitSegments(n);
-        int cx = x1 - n + 1;
-        for (int i = 0; i < segs.length; i++) {
-            int seg = segs[i];
-            // 区画の最初のタイルの W_top（上面の左上端）がバンドのアンカー
-            float tx = isoX(cx, y) - ISO_TW / 2f;
-            float ty = isoY(cx, y) + WALL_H;
-            drawWallBand(tx, ty, seg, false);
-            cx += seg;
-        }
-    }
-
-    /** 走行の長さを3タイル区画に分割する。余りが1なら最後の2区画を2+2にする。 */
-    private int[] splitSegments(int n) {
-        ArrayList<Integer> segs = new ArrayList<Integer>();
-        int rest = n;
-        while (rest >= 3) {
-            segs.add(3);
-            rest -= 3;
-        }
-        if (rest == 1 && !segs.isEmpty()) {
-            segs.set(segs.size() - 1, 2);
-            segs.add(2);
-        } else if (rest > 0) {
-            segs.add(rest);
-        }
-        int[] out = new int[segs.size()];
-        for (int i = 0; i < out.length; i++) {
-            out[i] = segs.get(i);
-        }
-        return out;
-    }
-
-    /**
-     * 壁の前面バンドを1区画描く。バンドスプライト（480x376）の上面は
-     * 21.5°なので、回転させて上面の32°に合わせる。上面の長さ・厚み・角度を
-     * すべて満たすようスケールと回転角を解く（3タイル区画）。1〜2タイルの
-     * 区画は厳密解がないため、角度と長さだけを合わせた緩和解を使う。
-     * target は上面の始点（SE面は E_top、SW面は W_top）。上面の階段が
-     * 理想線をまたぐよう、帯全体を BAND_TOP_LIFT だけ上にずらす。
-     */
-    private void drawWallBand(float targetX, float targetY, int segTiles, boolean ascending) {
-        float edge = segTiles * WALL_EDGE;
-        float sx;
-        float sy;
-        float theta;
-        if (segTiles >= 3) {
-            float v = 84.06f / edge;
-            if (v > 1f) {
-                v = 1f;
-            }
-            theta = 32f - (float) Math.toDegrees(Math.asin(v)) / 2f;
-            sy = 40.7f / (183f * (float) Math.cos(Math.toRadians(32f - theta)));
-            sx = edge * (float) Math.cos(Math.toRadians(32f - theta)) / 480f;
-        } else {
-            theta = 0f;
-            sx = edge / 566f;
-            sy = 300f * sx / 189f;
-        }
-        float lift = 4f;
-        if (ascending) {
-            // SE面：アンカーは上面の左下端（テクスチャ座標 (0,187)）。反時計回りに回転。
-            float ax = 187f * sy;
-            float rad = (float) Math.toRadians(theta);
-            float x = targetX + ax * (float) Math.sin(rad);
-            float y = targetY + lift - ax * (float) Math.cos(rad);
-            batch.draw(sprites.wallBand, x, y, 0, 0, 480, 376, sx, sy, theta,
-                    0, 0, 480, 376, false, false);
-        } else {
-            // SW面：左右反転し、アンカーは上面の左上端（矩形の左上 (0,376)）。時計回りに回転。
-            float ax = 376f * sy;
-            float rad = (float) Math.toRadians(theta);
-            float x = targetX - ax * (float) Math.sin(rad);
-            float y = targetY + lift - ax * (float) Math.cos(rad);
-            batch.draw(sprites.wallBand, x, y, 0, 0, 480, 376, sx, sy, -theta,
-                    0, 0, 480, 376, true, false);
+                    px - TILE / 2f, py - TILE / 2f, TILE, TILE);
+            drawTerrain(t, px, py);
         }
     }
 
     /** 装飾小物を描く。 */
-    private void drawPropIso(Prop prop, float px, float py) {
+    private void drawProp(Prop prop, float px, float py) {
         float height;
         switch (prop.kind) {
             case VENDING:
@@ -1521,9 +1320,9 @@ public class MallScreen implements Screen, InputProcessor {
     }
 
     /** アイテムをタイルの中心に描く。 */
-    private void drawItemIso(Item it) {
-        float px = isoX(it.x, it.y);
-        float py = isoY(it.x, it.y);
+    private void drawItem(Item it) {
+        float px = tileX(it.x);
+        float py = tileY(it.y);
         Texture tex = sprites.itemTexture(it.kind);
         float h = 28;
         float w = h * tex.getWidth() / (float) tex.getHeight();
@@ -1531,32 +1330,32 @@ public class MallScreen implements Screen, InputProcessor {
     }
 
     /** 敵を補間位置に描く（ボスは大きく表示する）。向きに合ったスプライトを使う。 */
-    private void drawCharacterIso(Enemy e) {
-        float px = isoX(e.rx, e.ry);
-        float py = isoY(e.rx, e.ry);
+    private void drawCharacter(Enemy e) {
+        float px = tileX(e.rx);
+        float py = tileY(e.ry);
         // 攻撃時の突進：攻撃方向へ素早く出て戻る
         if (e.lungeTimer > 0) {
             float progress = 1f - e.lungeTimer / ATTACK_LUNGE_TIME;
             float mag = (float) Math.sin(progress * Math.PI) * 0.35f;
             int[] d = DIR_DXY[e.lungeDir];
-            px += isoX(d[0] * mag, d[1] * mag);
-            py += isoY(d[0] * mag, d[1] * mag);
+            px += d[0] * mag * TILE;
+            py += -d[1] * mag * TILE;
         }
         float height = e.isBoss ? 90 : 64;
         drawAnchored(sprites.enemyTexture(e.kind, e.facing), px, py, height);
     }
 
     /** プレイヤーを補間位置に描く（歩行時の上下動と歩行フレームつき）。 */
-    private void drawPlayerIso(float bob) {
-        float px = isoX(playerRx, playerRy);
-        float py = isoY(playerRx, playerRy) + bob;
+    private void drawPlayer(float bob) {
+        float px = tileX(playerRx);
+        float py = tileY(playerRy) + bob;
         // 攻撃時の突進：攻撃方向へ素早く出て戻る
         if (attackLungeTimer > 0) {
             float progress = 1f - attackLungeTimer / ATTACK_LUNGE_TIME;
             float mag = (float) Math.sin(progress * Math.PI) * 0.35f;
             int[] d = DIR_DXY[attackDir];
-            px += isoX(d[0] * mag, d[1] * mag);
-            py += isoY(d[0] * mag, d[1] * mag);
+            px += d[0] * mag * TILE;
+            py += -d[1] * mag * TILE;
         }
         drawAnchored(sprites.heroTexture(playerFacing, walkFrame()), px, py, 64);
     }

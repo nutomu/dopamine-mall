@@ -21,6 +21,7 @@ from scipy import ndimage
 BASE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SHEETS_DIR = os.path.join(BASE, "samples", "sheets")
 SHEETS8_DIR = os.path.join(BASE, "samples", "sheets8")
+SHEETS_SHIREN_DIR = os.path.join(BASE, "samples", "sheets-shiren")
 OUT_DIR = os.path.join(BASE, "android", "assets", "sprites2d")
 
 PAD = 2       # 切り詰め時の余白
@@ -65,6 +66,23 @@ SHEETS8 = [
      2, 3, ["wall_top", "wall_band", "wall_corner",
             "slash", "hitstar", "door"],
      480, 160),
+]
+
+# シレン風見下ろし用の四角いマップチップと、足の振りを大きくした主人公8方向シート
+# （samples/sheets-shiren）。従来の同名スプライト（floor_mall など、hero_d*_f*）
+# を置き換えるため、既存のシートより後に処理する。向きの順番は列0＝南、
+# 1＝南西、2＝西、3＝北西、4＝北、5＝北東、6＝東、7＝南東。
+# (名前, ファイル, 行数, 列数, スプライト名, 最大辺, キー抜きの緑しきい値)
+SHEETS_SHIREN = [
+    ("chips", "media-generation-dopamine-mall-sheet-chips-squa-0-076a1431-cd7a-47ed-a8fb-1b3242fcdce6.webp",
+     3, 4, ["floor_mall", "floor_wood", "floor_carpet", "wall",
+            "bookshelf", "shelf", "counter", "table",
+            "arcade", "escalator", "stairs", "stage"],
+     160, 160),
+    ("player8-walk", "media-generation-dopamine-mall-sheet-player8-wa-0-8e42ae3f-fedc-40e2-a057-42805b4e33cc.webp",
+     2, 8, ["hero_d%d_f%d" % (c, r) for r in range(2)
+            for c in [0, 1, 2, 3, 4, 5, 7, 6]],
+     160, 160),
 ]
 
 
@@ -188,6 +206,12 @@ def main():
         print("[%s] %s (%d sprites)" % (sheet_name, filename, len(names)))
         all_sprites.update(slice_sheet(sheet_name, filename, rows, cols, names,
                                        sheets_dir=SHEETS8_DIR,
+                                       max_dim=max_dim, key_g=key_g,
+                                       key_mode="magenta"))
+    for sheet_name, filename, rows, cols, names, max_dim, key_g in SHEETS_SHIREN:
+        print("[%s] %s (%d sprites)" % (sheet_name, filename, len(names)))
+        all_sprites.update(slice_sheet(sheet_name, filename, rows, cols, names,
+                                       sheets_dir=SHEETS_SHIREN_DIR,
                                        max_dim=max_dim, key_g=key_g,
                                        key_mode="magenta"))
     manifest = os.path.join(OUT_DIR, "manifest.json")

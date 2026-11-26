@@ -52,7 +52,7 @@
  "arcade": {
   "file": "arcade.png",
   "h": 160,
-  "w": 94
+  "w": 104
  },
  "archangel": {
   "file": "archangel.png",
@@ -111,8 +111,8 @@
  },
  "bookshelf": {
   "file": "bookshelf.png",
-  "h": 160,
-  "w": 108
+  "h": 158,
+  "w": 160
  },
  "cake": {
   "file": "cake.png",
@@ -181,7 +181,7 @@
  },
  "counter": {
   "file": "counter.png",
-  "h": 121,
+  "h": 156,
   "w": 160
  },
  "customer": {
@@ -274,11 +274,6 @@
   "h": 160,
   "w": 142
  },
- "door": {
-  "file": "door.png",
-  "h": 480,
-  "w": 329
- },
  "drink": {
   "file": "drink.png",
   "h": 160,
@@ -286,22 +281,22 @@
  },
  "escalator": {
   "file": "escalator.png",
-  "h": 160,
-  "w": 156
+  "h": 157,
+  "w": 160
  },
  "floor_carpet": {
   "file": "floor_carpet.png",
-  "h": 98,
+  "h": 156,
   "w": 160
  },
  "floor_mall": {
   "file": "floor_mall.png",
-  "h": 99,
+  "h": 158,
   "w": 160
  },
  "floor_wood": {
   "file": "floor_wood.png",
-  "h": 99,
+  "h": 156,
   "w": 160
  },
  "fog": {
@@ -367,82 +362,82 @@
  "hero_d0_f0": {
   "file": "hero_d0_f0.png",
   "h": 160,
-  "w": 92
+  "w": 103
  },
  "hero_d0_f1": {
   "file": "hero_d0_f1.png",
   "h": 160,
-  "w": 93
+  "w": 102
  },
  "hero_d1_f0": {
   "file": "hero_d1_f0.png",
   "h": 160,
-  "w": 97
+  "w": 113
  },
  "hero_d1_f1": {
   "file": "hero_d1_f1.png",
   "h": 160,
-  "w": 102
+  "w": 108
  },
  "hero_d2_f0": {
   "file": "hero_d2_f0.png",
   "h": 160,
-  "w": 102
+  "w": 108
  },
  "hero_d2_f1": {
   "file": "hero_d2_f1.png",
   "h": 160,
-  "w": 98
+  "w": 103
  },
  "hero_d3_f0": {
   "file": "hero_d3_f0.png",
   "h": 160,
-  "w": 98
+  "w": 105
  },
  "hero_d3_f1": {
   "file": "hero_d3_f1.png",
   "h": 160,
-  "w": 100
+  "w": 104
  },
  "hero_d4_f0": {
   "file": "hero_d4_f0.png",
   "h": 160,
-  "w": 91
+  "w": 110
  },
  "hero_d4_f1": {
   "file": "hero_d4_f1.png",
   "h": 160,
-  "w": 95
+  "w": 89
  },
  "hero_d5_f0": {
   "file": "hero_d5_f0.png",
   "h": 160,
-  "w": 93
+  "w": 100
  },
  "hero_d5_f1": {
   "file": "hero_d5_f1.png",
   "h": 160,
-  "w": 92
+  "w": 102
  },
  "hero_d6_f0": {
   "file": "hero_d6_f0.png",
   "h": 160,
-  "w": 93
+  "w": 102
  },
  "hero_d6_f1": {
   "file": "hero_d6_f1.png",
   "h": 160,
-  "w": 106
+  "w": 120
  },
  "hero_d7_f0": {
   "file": "hero_d7_f0.png",
   "h": 160,
-  "w": 94
+  "w": 95
  },
  "hero_d7_f1": {
   "file": "hero_d7_f1.png",
   "h": 160,
-  "w": 104
+  "w": 102
  },
  "hitstar": {
   "file": "hitstar.png",
@@ -501,8 +496,8 @@
  },
  "shelf": {
   "file": "shelf.png",
-  "h": 160,
-  "w": 133
+  "h": 135,
+  "w": 160
  },
  "sign": {
   "file": "sign.png",
@@ -516,17 +511,17 @@
  },
  "stage": {
   "file": "stage.png",
-  "h": 104,
+  "h": 100,
   "w": 160
  },
  "stairs": {
   "file": "stairs.png",
-  "h": 160,
-  "w": 156
+  "h": 158,
+  "w": 160
  },
  "table": {
   "file": "table.png",
-  "h": 121,
+  "h": 86,
   "w": 160
  },
  "trash": {
@@ -552,22 +547,7 @@
  "wall": {
   "file": "wall.png",
   "h": 160,
-  "w": 96
- },
- "wall_band": {
-  "file": "wall_band.png",
-  "h": 376,
-  "w": 480
- },
- "wall_corner": {
-  "file": "wall_corner.png",
-  "h": 369,
-  "w": 480
- },
- "wall_top": {
-  "file": "wall_top.png",
-  "h": 476,
-  "w": 480
+  "w": 160
  },
  "yeti": {
   "file": "yeti.png",

@@ -9,10 +9,10 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * 2.5D アイソメトリック用のスプライト集。画像生成モデルで作ったシートを
+ * シレン風見下ろし用のスプライト集。画像生成モデルで作ったシートを
  * tools/slice_sheets.py で切り出した PNG を android/assets/sprites2d/ から読む。
- * Linear フィルタでなめらかに表示する（描画時に縮小するため）。
- * 敵・アイテム・小物は種類ごとのキャッシュで読み込む。
+ * 壁は1マス＝1チップ（上面と前面を1枚に含む）。Linear フィルタでなめらかに
+ * 表示する（描画時に縮小するため）。敵・アイテム・小物は種類ごとのキャッシュで読み込む。
  */
 public class Sprites {
     private final List<Texture> all = new ArrayList<Texture>();
@@ -34,12 +34,6 @@ public class Sprites {
     public final Texture bench;
     public final Texture hero;
     public final Texture fog;
-    /** 壁の上面ダイヤ（継ぎ目なく並べる）。 */
-    public final Texture wallTop;
-    /** 壁の前面バンド（壁の並びの南側の縁に帯状に描く）。 */
-    public final Texture wallBand;
-    /** 壁の角（南側の角タイル用）。 */
-    public final Texture wallCorner;
     /** 斬撃エフェクト（白い弧）。 */
     public final Texture slash;
     /** ヒット時の星エフェクト。 */
@@ -66,9 +60,6 @@ public class Sprites {
         bench = load("bench");
         hero = load("hero");
         fog = load("fog");
-        wallTop = load("wall_top");
-        wallBand = load("wall_band");
-        wallCorner = load("wall_corner");
         slash = load("slash");
         hitstar = load("hitstar");
     }
