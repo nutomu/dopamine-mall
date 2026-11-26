@@ -33,11 +33,23 @@ jobs:
       - name: Rename APK
         run: cp android/build/outputs/apk/debug/android-debug.apk dopamine-mall-debug.apk
 
+      - name: Build desktop jar
+        run: ./gradlew :desktop:dist --stacktrace
+
+      - name: Copy desktop jar
+        run: cp desktop/build/libs/dopamine-mall-desktop.jar dopamine-mall-desktop.jar
+
       - name: Upload APK as artifact
         uses: actions/upload-artifact@v4
         with:
           name: dopamine-mall-debug-apk
           path: dopamine-mall-debug.apk
+
+      - name: Upload desktop jar as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: dopamine-mall-desktop-jar
+          path: dopamine-mall-desktop.jar
 
       - name: Publish nightly release
         uses: softprops/action-gh-release@v2
@@ -46,13 +58,26 @@ jobs:
           name: ドパミン・モール 日次ビルド
           body: |
             ドパミン・モールの日次ビルド（開発版）です。
+
+            ## Fire TV Stick で遊ぶ
             下の dopamine-mall-debug.apk をダウンロードして、Fire TV Stick へサイドロードして遊べます。
 
-            ## Fire TV Stick への入れ方
+            ### Fire TV Stick への入れ方
             1. Fire TV Stick の「設定」→「マイ Fire TV」→「開発者オプション」で「不明なアプリのインストール」を許可します。
             2. Downloader アプリなどでこの APK をダウンロードしてインストールします。
             3. ゲームパッドまたは Fire TV リモコンの十字キーで遊べます。
 
+            ## PC（デスクトップ版）で遊ぶ
+            下の dopamine-mall-desktop.jar をダウンロードして、次のコマンドで起動します。Java 17 が必要です。
+
+            ```
+            java -jar dopamine-mall-desktop.jar
+            ```
+
+            キーボードの矢印キー / WASD で遊べます。
+
             注意：開発中のバージョンです。動作が不安定な場合があります。
-          files: dopamine-mall-debug.apk
+          files: |
+            dopamine-mall-debug.apk
+            dopamine-mall-desktop.jar
           fail_on_unmatched_files: true
