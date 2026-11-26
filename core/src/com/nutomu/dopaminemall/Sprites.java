@@ -9,68 +9,78 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * ドット絵スプライト集。tools/generate_tiles.py で生成した 32x32 PNG を
- * android/assets/sprites/ から読み込む。Nearest フィルタでくっきり表示する。
- * 敵・アイテムの色分けは Enemy.Kind / Item.Kind の既存の色と対応している。
+ * 2.5D アイソメトリック用のスプライト集。画像生成モデルで作ったシートを
+ * tools/slice_sheets.py で切り出した PNG を android/assets/sprites2d/ から読む。
+ * Linear フィルタでなめらかに表示する（描画時に縮小するため）。
+ * 敵・アイテム・小物は種類ごとのキャッシュで読み込む。
  */
 public class Sprites {
     private final List<Texture> all = new ArrayList<Texture>();
-    /** 敵・アイテム用テクスチャのキャッシュ（毎フレーム読み込まないため）。 */
+    /** 敵・アイテム・小物用テクスチャのキャッシュ（毎フレーム読み込まないため）。 */
     private final Map<String, Texture> cache = new HashMap<String, Texture>();
 
-    public final Texture floorA;
-    public final Texture floorB;
-    public final Texture floorC;
+    public final Texture floorMall;
+    public final Texture floorWood;
+    public final Texture floorCarpet;
     public final Texture wall;
+    public final Texture bookshelf;
     public final Texture shelf;
-    public final Texture machine;
-    public final Texture table;
     public final Texture counter;
-    public final Texture stage;
-    public final Texture seat;
+    public final Texture table;
+    public final Texture arcade;
     public final Texture escalator;
     public final Texture stairs;
-    public final Texture player;
+    public final Texture stage;
+    public final Texture bench;
+    public final Texture hero;
+    public final Texture fog;
+
+    /** 装飾用の小物の種類。 */
+    public enum Prop {
+        LANTERN, PLANT, VENDING, TRASH, CART, SIGN, BENCH, LAMP, COINS
+    }
 
     public Sprites() {
-        floorA = load("floor_a");
-        floorB = load("floor_b");
-        floorC = load("floor_c");
+        floorMall = load("floor_mall");
+        floorWood = load("floor_wood");
+        floorCarpet = load("floor_carpet");
         wall = load("wall");
+        bookshelf = load("bookshelf");
         shelf = load("shelf");
-        machine = load("machine");
-        table = load("table");
         counter = load("counter");
-        stage = load("stage");
-        seat = load("seat");
+        table = load("table");
+        arcade = load("arcade");
         escalator = load("escalator");
         stairs = load("stairs");
-        player = load("player");
+        stage = load("stage");
+        bench = load("bench");
+        hero = load("hero");
+        fog = load("fog");
     }
 
     private Texture load(String name) {
-        Texture t = new Texture(Gdx.files.internal("sprites/" + name + ".png"));
-        t.setFilter(Texture.TextureFilter.Nearest, Texture.TextureFilter.Nearest);
+        Texture t = new Texture(Gdx.files.internal("sprites2d/" + name + ".png"));
+        t.setFilter(Texture.TextureFilter.Linear, Texture.TextureFilter.Linear);
         all.add(t);
         return t;
     }
 
-    /** フロアの床タイル（位置でバリエーションを変える）。 */
-    public Texture floorTile(int x, int y) {
-        int v = (x * 7 + y * 13) % 3;
-        if (v < 0) {
-            v += 3;
+    /** フロアタイプごとの床タイル。 */
+    public Texture floorTexture(FloorType type) {
+        switch (type) {
+            case SUPERMARKET:
+            case FOOD_COURT:
+                return floorWood;
+            case GAME_CENTER:
+            case EVENT:
+                return floorCarpet;
+            case TENANT:
+            default:
+                return floorMall;
         }
-        if (v == 0) {
-            return floorA;
-        }
-        if (v == 1) {
-            return floorB;
-        }
-        return floorC;
     }
 
-    /** 地形タイルに対応するスプライト（床は floorTile を使うこと）。 */
+    /** 地形タイルに対応するスプライト（床は floorTexture を使うこと）。 */
     public Texture terrainTexture(Floor.Tile t) {
         switch (t) {
             case WALL:
@@ -78,7 +88,7 @@ public class Sprites {
             case SHELF:
                 return shelf;
             case MACHINE:
-                return machine;
+                return arcade;
             case TABLE:
                 return table;
             case COUNTER:
@@ -86,14 +96,14 @@ public class Sprites {
             case STAGE:
                 return stage;
             case SEAT:
-                return seat;
+                return bench;
             case ESCALATOR:
                 return escalator;
             case STAIRS:
                 return stairs;
             case FLOOR:
             default:
-                return floorA;
+                return floorMall;
         }
     }
 
@@ -110,35 +120,35 @@ public class Sprites {
     public Texture enemyTexture(Enemy.Kind kind) {
         switch (kind) {
             case CUSTOMER:
-                return cached("enemy_customer");
+                return cached("customer");
             case CLERK:
-                return cached("enemy_clerk");
+                return cached("clerk");
             case GUARD:
-                return cached("enemy_guard");
+                return cached("guard");
             case BEAR_MASCOT:
-                return cached("enemy_bear_mascot");
+                return cached("bear");
             case RABBIT_MASCOT:
-                return cached("enemy_rabbit_mascot");
+                return cached("rabbit");
             case ESCAPED_DOG:
-                return cached("enemy_dog");
+                return cached("dog");
             case ESCAPED_MONKEY:
-                return cached("enemy_monkey");
+                return cached("monkey");
             case TSUCHINOKO:
-                return cached("enemy_tsuchinoko");
+                return cached("tsuchinoko");
             case YETI:
-                return cached("enemy_yeti");
+                return cached("yeti");
             case ANGEL:
-                return cached("enemy_angel");
+                return cached("angel");
             case LION_GOD:
-                return cached("enemy_lion_god");
+                return cached("lion");
             case MANAGER:
-                return cached("boss_manager");
+                return cached("manager");
             case GIANT_MASCOT:
-                return cached("boss_giant_mascot");
+                return cached("giant_bear");
             case ARCHANGEL:
-                return cached("boss_archangel");
+                return cached("archangel");
             default:
-                return cached("enemy_customer");
+                return cached("customer");
         }
     }
 
@@ -146,21 +156,47 @@ public class Sprites {
     public Texture itemTexture(Item.Kind kind) {
         switch (kind) {
             case DRINK:
-                return cached("item_drink");
+                return cached("drink");
             case ONIGIRI:
-                return cached("item_onigiri");
+                return cached("onigiri");
             case SWEETS:
-                return cached("item_sweets");
+                return cached("cake");
             case UMBRELLA:
-                return cached("item_umbrella");
+                return cached("umbrella");
             case FRYING_PAN:
-                return cached("item_frying_pan");
+                return cached("pan");
             case APRON:
-                return cached("item_apron");
+                return cached("apron");
             case JACKET:
-                return cached("item_jacket");
+                return cached("jacket");
             default:
-                return cached("item_drink");
+                return cached("drink");
+        }
+    }
+
+    /** 装飾用の小物のスプライト。 */
+    public Texture propTexture(Prop kind) {
+        switch (kind) {
+            case LANTERN:
+                return cached("lantern");
+            case PLANT:
+                return cached("plant");
+            case VENDING:
+                return cached("vending");
+            case TRASH:
+                return cached("trash");
+            case CART:
+                return cached("cart");
+            case SIGN:
+                return cached("sign");
+            case BENCH:
+                return cached("bench");
+            case LAMP:
+                return cached("lamp");
+            case COINS:
+                return cached("coins");
+            default:
+                return cached("plant");
         }
     }
 

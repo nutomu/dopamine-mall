@@ -1,0 +1,227 @@
+{
+ "angel": {
+  "file": "angel.png",
+  "h": 160,
+  "w": 132
+ },
+ "apron": {
+  "file": "apron.png",
+  "h": 160,
+  "w": 114
+ },
+ "arcade": {
+  "file": "arcade.png",
+  "h": 160,
+  "w": 94
+ },
+ "archangel": {
+  "file": "archangel.png",
+  "h": 160,
+  "w": 141
+ },
+ "bear": {
+  "file": "bear.png",
+  "h": 160,
+  "w": 88
+ },
+ "bench": {
+  "file": "bench.png",
+  "h": 155,
+  "w": 160
+ },
+ "bookshelf": {
+  "file": "bookshelf.png",
+  "h": 160,
+  "w": 108
+ },
+ "cake": {
+  "file": "cake.png",
+  "h": 160,
+  "w": 144
+ },
+ "cart": {
+  "file": "cart.png",
+  "h": 160,
+  "w": 136
+ },
+ "chest": {
+  "file": "chest.png",
+  "h": 160,
+  "w": 152
+ },
+ "clerk": {
+  "file": "clerk.png",
+  "h": 160,
+  "w": 76
+ },
+ "coins": {
+  "file": "coins.png",
+  "h": 106,
+  "w": 160
+ },
+ "counter": {
+  "file": "counter.png",
+  "h": 121,
+  "w": 160
+ },
+ "customer": {
+  "file": "customer.png",
+  "h": 160,
+  "w": 88
+ },
+ "dog": {
+  "file": "dog.png",
+  "h": 160,
+  "w": 113
+ },
+ "drink": {
+  "file": "drink.png",
+  "h": 160,
+  "w": 60
+ },
+ "escalator": {
+  "file": "escalator.png",
+  "h": 160,
+  "w": 156
+ },
+ "floor_carpet": {
+  "file": "floor_carpet.png",
+  "h": 98,
+  "w": 160
+ },
+ "floor_mall": {
+  "file": "floor_mall.png",
+  "h": 99,
+  "w": 160
+ },
+ "floor_wood": {
+  "file": "floor_wood.png",
+  "h": 99,
+  "w": 160
+ },
+ "fog": {
+  "file": "fog.png",
+  "h": 138,
+  "w": 160
+ },
+ "giant_bear": {
+  "file": "giant_bear.png",
+  "h": 160,
+  "w": 110
+ },
+ "guard": {
+  "file": "guard.png",
+  "h": 160,
+  "w": 75
+ },
+ "hero": {
+  "file": "hero.png",
+  "h": 160,
+  "w": 107
+ },
+ "jacket": {
+  "file": "jacket.png",
+  "h": 160,
+  "w": 144
+ },
+ "lamp": {
+  "file": "lamp.png",
+  "h": 160,
+  "w": 91
+ },
+ "lantern": {
+  "file": "lantern.png",
+  "h": 160,
+  "w": 118
+ },
+ "lion": {
+  "file": "lion.png",
+  "h": 160,
+  "w": 95
+ },
+ "manager": {
+  "file": "manager.png",
+  "h": 160,
+  "w": 77
+ },
+ "monkey": {
+  "file": "monkey.png",
+  "h": 160,
+  "w": 110
+ },
+ "onigiri": {
+  "file": "onigiri.png",
+  "h": 159,
+  "w": 160
+ },
+ "pan": {
+  "file": "pan.png",
+  "h": 90,
+  "w": 160
+ },
+ "plant": {
+  "file": "plant.png",
+  "h": 160,
+  "w": 114
+ },
+ "rabbit": {
+  "file": "rabbit.png",
+  "h": 160,
+  "w": 72
+ },
+ "shelf": {
+  "file": "shelf.png",
+  "h": 160,
+  "w": 133
+ },
+ "sign": {
+  "file": "sign.png",
+  "h": 160,
+  "w": 108
+ },
+ "stage": {
+  "file": "stage.png",
+  "h": 104,
+  "w": 160
+ },
+ "stairs": {
+  "file": "stairs.png",
+  "h": 160,
+  "w": 156
+ },
+ "table": {
+  "file": "table.png",
+  "h": 121,
+  "w": 160
+ },
+ "trash": {
+  "file": "trash.png",
+  "h": 160,
+  "w": 110
+ },
+ "tsuchinoko": {
+  "file": "tsuchinoko.png",
+  "h": 160,
+  "w": 122
+ },
+ "umbrella": {
+  "file": "umbrella.png",
+  "h": 141,
+  "w": 160
+ },
+ "vending": {
+  "file": "vending.png",
+  "h": 160,
+  "w": 91
+ },
+ "wall": {
+  "file": "wall.png",
+  "h": 160,
+  "w": 96
+ },
+ "yeti": {
+  "file": "yeti.png",
+  "h": 160,
+  "w": 113
+ }
+}

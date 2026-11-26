@@ -11,6 +11,7 @@ import com.badlogic.gdx.graphics.g2d.BitmapFont;
 import com.badlogic.gdx.graphics.g2d.GlyphLayout;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
 import com.badlogic.gdx.graphics.glutils.ShapeRenderer;
+import com.badlogic.gdx.graphics.Texture;
 import com.badlogic.gdx.math.Vector3;
 import com.badlogic.gdx.utils.viewport.FitViewport;
 import com.badlogic.gdx.utils.viewport.Viewport;
@@ -48,8 +49,11 @@ import java.util.List;
  *   倒さなくても階段で次の階へ進める。ボスは金色で大きく表示し、記号 'B'。
  * - モンスターハウス：フロアごとに10%の確率で、ランダムな場所に敵6〜10体を詰め込む。
  *   入るとメッセージで知らせる。中の敵は視界ルール通り、入るまで見えない。
- * ※ グラフィックスはドット絵スプライト＋最先端の2D演出（サンプルD「霧とランタンの神秘」）。
- * - tools/generate_tiles.py で生成した 32x32 のドット絵タイルをスプライト描画する。
+ * ※ グラフィックスは2.5Dアイソメトリック描画（シムシティー／GTA2風の斜め見降ろし）。
+ * - 画像生成モデルで作ったスプライトシートを tools/slice_sheets.py で切り出した
+ *   PNG（android/assets/sprites2d/）を描画する。床はひし形タイルをアイソメ
+ *   トリック投影で並べ、壁・家具・キャラクターは立った姿で描く。
+ * - 描画順はペインター法（x+y の昇順）。カメラはプレイヤーを追従する。
  * - 階層別の雰囲気：下層は明るい現代のモール、上層ほど暗く神秘的に（霧・ランタンの光）。
  * - 移動はターン制のまま、マスからマスへ滑らかに補間するアニメーションを入れる。
  * ※ HUD の文字はデフォルトフォントが ASCII のみのため英字表記。
@@ -81,11 +85,30 @@ import java.util.List;
  * - Fire TV リモコンの Back ボタンがアプリに届くよう setCatchKey(BACK) する。
  */
 public class MallScreen implements Screen, InputProcessor {
-    static final int TILE = 48;
+    /** アイソメトリックタイルの画面サイズ（ひし形タイルの幅・高さ）。 */
+    static final int ISO_TW = 64;
+    static final int ISO_TH = 40;
     static final int VIEW_W = 1280;
     static final int VIEW_H = 800;
     /** 視界の広さ（プレイヤーから歩いて何マス先まで「行った場所」にするか）。 */
     static final int SIGHT = 8;
+
+    /** タイル座標 (tx, ty) をアイソメトリックの画面 X 座標に変換する。 */
+    static float isoX(float tx, float ty) {
+        return (tx - ty) * ISO_TW / 2f;
+    }
+
+    /** タイル座標 (tx, ty) をアイソメトリックの画面 Y 座標に変換する。 */
+    static float isoY(float tx, float ty) {
+        return -(tx + ty) * ISO_TH / 2f;
+    }
+
+    /** アイソメトリックの画面座標をタイル座標に逆変換する（タップ移動用）。 */
+    static float[] isoToTile(float wx, float wy) {
+        float tx = wx / ISO_TW - wy / ISO_TH;
+        float ty = -wy / ISO_TH - wx / ISO_TW;
+        return new float[]{tx, ty};
+    }
 
     private final DopamineMallGame game;
     private OrthographicCamera camera;
@@ -102,7 +125,7 @@ public class MallScreen implements Screen, InputProcessor {
     private Floor floor;
     private int playerX;
     private int playerY;
-    /** プレイヤーの描画用補間位置（ピクセル単位）。移動時に目標タイルへ滑らかに寄る。 */
+    /** プレイヤーの描画用補間位置（タイル単位）。移動時に目標タイルへ滑らかに寄る。 */
     private float playerRx;
     private float playerRy;
     private int floorNumber = 1;
@@ -146,13 +169,30 @@ public class MallScreen implements Screen, InputProcessor {
     private int announcementTurn = 0;
     /** モンスターハウスに入ったあとボス曲を流しているかどうか。 */
     private boolean monsterHouseMusic = false;
-    /** 演出用パーティクル（きらめき・撃破時の破片）。 */
+    /** 演出用パーティクル（きらめき・撃破時の破片・霧）。 */
     private static class Particle {
         float x, y, vx, vy, life, maxLife, size;
         float r, g, b;
         /** 描画時の不透明度の上限（霧は薄くする）。 */
         float alpha = 1f;
+        /** テクスチャ付きパーティクル（霧）。null なら円で描く。 */
+        com.badlogic.gdx.graphics.Texture tex = null;
+        /** テクスチャの描画幅（ピクセル）。 */
+        float texW = 0f;
     }
+
+    /** 装飾用の小物（2.5D）。床タイルに置くだけで、移動を妨げない。 */
+    private static class Prop {
+        int x, y;
+        Sprites.Prop kind;
+
+        Prop(int x, int y, Sprites.Prop kind) {
+            this.x = x;
+            this.y = y;
+            this.kind = kind;
+        }
+    }
+    private List<Prop> props = new ArrayList<Prop>();
     private List<Particle> particles = new ArrayList<Particle>();
     /** 攻撃・被弾時の画面フラッシュ（0 になると消える）。 */
     private float flashTimer = 0f;
@@ -192,10 +232,11 @@ public class MallScreen implements Screen, InputProcessor {
         floor = FloorGenerator.generate(floorNumber);
         playerX = floor.startX;
         playerY = floor.startY;
-        playerRx = playerX * TILE;
-        playerRy = playerY * TILE;
+        playerRx = playerX;
+        playerRy = playerY;
         enemies = FloorGenerator.spawnEnemies(floor, floorNumber);
         items = FloorGenerator.spawnItems(floor, floorNumber, enemies);
+        spawnProps();
         isBossFloor = floorNumber % 5 == 0;
         monsterHouseAnnounced = false;
         monsterHouseMusic = false;
@@ -211,6 +252,51 @@ public class MallScreen implements Screen, InputProcessor {
         if (!titleScreen) {
             updateMusic();
         }
+    }
+
+    /** 装飾用の小物をフロアの空いている床タイルに数個配置する（移動を妨げない）。 */
+    private void spawnProps() {
+        props = new ArrayList<Prop>();
+        Sprites.Prop[] lowerKinds = {Sprites.Prop.VENDING, Sprites.Prop.CART,
+                Sprites.Prop.BENCH, Sprites.Prop.PLANT, Sprites.Prop.SIGN,
+                Sprites.Prop.TRASH};
+        Sprites.Prop[] upperKinds = {Sprites.Prop.LANTERN, Sprites.Prop.LAMP,
+                Sprites.Prop.PLANT, Sprites.Prop.COINS, Sprites.Prop.SIGN};
+        Sprites.Prop[] kinds = floorNumber <= 4 ? lowerKinds
+                : (floorNumber <= 9 ? lowerKinds : upperKinds);
+        int count = 6 + (int) (Math.random() * 5);
+        int tries = 0;
+        while (props.size() < count && tries < 200) {
+            tries++;
+            int x = 1 + (int) (Math.random() * (floor.w - 2));
+            int y = 1 + (int) (Math.random() * (floor.h - 2));
+            if (floor.tiles[x][y] != Floor.Tile.FLOOR) {
+                continue;
+            }
+            if (Math.abs(x - floor.startX) + Math.abs(y - floor.startY) <= 2) {
+                continue;
+            }
+            if (x == floor.escX && y == floor.escY) {
+                continue;
+            }
+            if (x == floor.stairX && y == floor.stairY) {
+                continue;
+            }
+            if (enemyAt(x, y) != null || itemAt(x, y) != null || propAt(x, y) != null) {
+                continue;
+            }
+            props.add(new Prop(x, y, kinds[(int) (Math.random() * kinds.length)]));
+        }
+    }
+
+    /** 指定したタイルにある装飾小物を返す。なければ null。 */
+    private Prop propAt(int x, int y) {
+        for (Prop p : props) {
+            if (p.x == x && p.y == y) {
+                return p;
+            }
+        }
+        return null;
     }
 
     /** 状況に応じた BGM を選ぶ（ボスフロア／モンスターハウスはボス曲）。 */
@@ -310,19 +396,26 @@ public class MallScreen implements Screen, InputProcessor {
 
     /** カメラをプレイヤーに追従させる（フロアの端でははみ出さない）。描画用の補間位置を使う。 */
     private void followCamera() {
-        float worldW = floor.w * TILE;
-        float worldH = floor.h * TILE;
-        float cx = playerRx + TILE / 2f;
-        float cy = playerRy + TILE / 2f;
+        float px = isoX(playerRx, playerRy);
+        float py = isoY(playerRx, playerRy);
+        // アイソメトリック世界の範囲
+        float minX = -(floor.h - 1) * ISO_TW / 2f;
+        float maxX = (floor.w - 1) * ISO_TW / 2f;
+        float minY = -(floor.w + floor.h - 2) * ISO_TH / 2f;
+        float maxY = 96f; // 壁などの高いスプライトが画面上にはみ出す分
+        float worldW = maxX - minX;
+        float worldH = maxY - minY;
+        float cx = px;
+        float cy = py;
         if (worldW <= VIEW_W) {
-            cx = worldW / 2f;
+            cx = (minX + maxX) / 2f;
         } else {
-            cx = Math.max(VIEW_W / 2f, Math.min(worldW - VIEW_W / 2f, cx));
+            cx = Math.max(minX + VIEW_W / 2f, Math.min(maxX - VIEW_W / 2f, cx));
         }
         if (worldH <= VIEW_H) {
-            cy = worldH / 2f;
+            cy = (minY + maxY) / 2f;
         } else {
-            cy = Math.max(VIEW_H / 2f, Math.min(worldH - VIEW_H / 2f, cy));
+            cy = Math.max(minY + VIEW_H / 2f, Math.min(maxY - VIEW_H / 2f, cy));
         }
         camera.position.set(cx, cy, 0);
         camera.update();
@@ -583,10 +676,10 @@ public class MallScreen implements Screen, InputProcessor {
     private void spawnSparkles() {
         for (int i = 0; i < 24; i++) {
             Particle p = new Particle();
-            p.x = (playerX + (float) (Math.random() * 12 - 6)) * TILE + TILE / 2f;
-            p.y = (playerY + (float) (Math.random() * 12 - 6)) * TILE + TILE / 2f;
-            p.vx = (float) (Math.random() * 10 - 5);
-            p.vy = (float) (Math.random() * 20 + 5);
+            p.x = playerX + (float) (Math.random() * 12 - 6) + 0.5f;
+            p.y = playerY + (float) (Math.random() * 12 - 6) + 0.5f;
+            p.vx = (float) (Math.random() * 0.2 - 0.1);
+            p.vy = (float) (Math.random() * 0.4 + 0.1);
             p.maxLife = p.life = 1.2f + (float) Math.random() * 1.3f;
             p.size = 3f + (float) Math.random() * 4f;
             p.r = 1f;
@@ -600,10 +693,10 @@ public class MallScreen implements Screen, InputProcessor {
     private void spawnDeathParticles(Enemy e) {
         for (int i = 0; i < 8; i++) {
             Particle p = new Particle();
-            p.x = e.x * TILE + TILE / 2f;
-            p.y = e.y * TILE + TILE / 2f;
+            p.x = e.x + 0.5f;
+            p.y = e.y + 0.5f;
             double angle = Math.random() * Math.PI * 2;
-            double speed = 40 + Math.random() * 90;
+            double speed = 0.8 + Math.random() * 1.9;
             p.vx = (float) (Math.cos(angle) * speed);
             p.vy = (float) (Math.sin(angle) * speed);
             p.maxLife = p.life = 0.4f + (float) Math.random() * 0.3f;
@@ -626,7 +719,7 @@ public class MallScreen implements Screen, InputProcessor {
             }
             p.x += p.vx * delta;
             p.y += p.vy * delta;
-            p.vy -= 20 * delta;
+            p.vy -= 0.42f * delta;
         }
     }
 
@@ -799,8 +892,12 @@ public class MallScreen implements Screen, InputProcessor {
         // タップした方向へ1マス進む（斜めは横方向を優先）
         Vector3 v = new Vector3(screenX, screenY, 0);
         viewport.unproject(v);
-        int tx = (int) (v.x / TILE);
-        int ty = (int) (v.y / TILE);
+        float[] tile = isoToTile(v.x, v.y);
+        int tx = (int) Math.floor(tile[0] + 0.5f);
+        int ty = (int) Math.floor(tile[1] + 0.5f);
+        if (!floor.inBounds(tx, ty)) {
+            return true;
+        }
         int dx = Integer.compare(tx, playerX);
         int dy = Integer.compare(ty, playerY);
         if (dx != 0 && dy != 0) {
@@ -872,40 +969,33 @@ public class MallScreen implements Screen, InputProcessor {
         updateAnimation(delta);
         updateFog(delta);
 
-        // タイルと登場人物をドット絵スプライトで描く
+        // タイルと登場人物を2.5Dスプライトで描く（ペインター法：x+y の昇順）
+        float bob = playerBob();
         batch.setProjectionMatrix(camera.combined);
         batch.begin();
-        int x0 = Math.max(0, (int) ((camera.position.x - VIEW_W / 2f) / TILE) - 1);
-        int x1 = Math.min(floor.w - 1, (int) ((camera.position.x + VIEW_W / 2f) / TILE) + 1);
-        int y0 = Math.max(0, (int) ((camera.position.y - VIEW_H / 2f) / TILE) - 1);
-        int y1 = Math.min(floor.h - 1, (int) ((camera.position.y + VIEW_H / 2f) / TILE) + 1);
-        for (int x = x0; x <= x1; x++) {
-            for (int y = y0; y <= y1; y++) {
-                drawTile(x, y);
+        for (int s = 0; s <= floor.w + floor.h - 2; s++) {
+            for (int x = Math.max(0, s - (floor.h - 1));
+                 x <= Math.min(floor.w - 1, s); x++) {
+                int y = s - x;
+                drawTileIso(x, y);
+                Item it = itemAt(x, y);
+                if (it != null && floor.visited[x][y]) {
+                    drawItemIso(it);
+                }
+            }
+            // この斜め帯にいる敵・プレイヤー（補間位置の x+y で判定）
+            for (Enemy e : enemies) {
+                if (!floor.visited[e.x][e.y]) {
+                    continue;
+                }
+                if ((int) Math.floor(e.rx + e.ry + 0.5f) == s) {
+                    drawCharacterIso(e);
+                }
+            }
+            if ((int) Math.floor(playerRx + playerRy + 0.5f) == s) {
+                drawPlayerIso(bob);
             }
         }
-        // アイテム（行った場所にあるものだけ表示する）
-        for (Item it : items) {
-            if (!floor.visited[it.x][it.y]) {
-                continue;
-            }
-            batch.draw(sprites.itemTexture(it.kind),
-                    it.x * TILE + TILE * 0.2f, it.y * TILE + TILE * 0.2f,
-                    TILE * 0.6f, TILE * 0.6f);
-        }
-        // 敵（行った場所にいる敵だけ表示する。ボスは大きく表示する）
-        for (Enemy e : enemies) {
-            if (!floor.visited[e.x][e.y]) {
-                continue;
-            }
-            float size = e.isBoss ? TILE * 1.4f : TILE * 0.85f;
-            float ox = e.rx + TILE / 2f - size / 2f;
-            float oy = e.ry + TILE / 2f - size / 2f;
-            batch.draw(sprites.enemyTexture(e.kind), ox, oy, size, size);
-        }
-        // プレイヤー（歩行時の上下動つき）
-        float bob = playerBob();
-        batch.draw(sprites.player, playerRx, playerRy + bob, TILE, TILE);
         batch.end();
 
         // 階層別の雰囲気オーバーレイ＋光＋パーティクル
@@ -921,28 +1011,47 @@ public class MallScreen implements Screen, InputProcessor {
         }
         // プレイヤーを中心とした柔らかい光（上層ほど強く。視界ルールは変えない）
         float ls = lightStrength();
-        float pcx = playerRx + TILE / 2f;
-        float pcy = playerRy + TILE / 2f + bob;
+        float pcx = isoX(playerRx, playerRy);
+        float pcy = isoY(playerRx, playerRy) + bob;
         shapes.setColor(1f, 0.85f, 0.45f, 0.10f * ls);
-        shapes.circle(pcx, pcy, TILE * 1.3f);
+        shapes.circle(pcx, pcy, ISO_TW * 1.3f);
         shapes.setColor(1f, 0.85f, 0.45f, 0.05f * ls);
-        shapes.circle(pcx, pcy, TILE * 2.6f);
+        shapes.circle(pcx, pcy, ISO_TW * 2.6f);
         shapes.setColor(1f, 0.85f, 0.45f, 0.025f * ls);
-        shapes.circle(pcx, pcy, TILE * 4.0f);
+        shapes.circle(pcx, pcy, ISO_TW * 4.0f);
         // 攻撃したタイルのフラッシュ
         if (attackFlashTimer > 0) {
             shapes.setColor(1f, 1f, 0.6f, attackFlashTimer / 0.2f * 0.7f);
-            shapes.circle(attackFlashX * TILE + TILE / 2f,
-                    attackFlashY * TILE + TILE / 2f, TILE * 0.38f);
+            shapes.circle(isoX(attackFlashX, attackFlashY),
+                    isoY(attackFlashX, attackFlashY), ISO_TW * 0.38f);
         }
-        // パーティクル（きらめき・撃破時の破片・霧）
+        // パーティクル（きらめき・撃破時の破片。霧はテクスチャ付きなので後で描く）
         for (Particle p : particles) {
+            if (p.tex != null) {
+                continue;
+            }
             float alpha = Math.max(0f, p.life / p.maxLife) * p.alpha;
             shapes.setColor(p.r, p.g, p.b, alpha);
-            shapes.circle(p.x, p.y, p.size);
+            shapes.circle(isoX(p.x, p.y), isoY(p.x, p.y), p.size);
         }
         shapes.end();
         Gdx.gl.glDisable(GL20.GL_BLEND);
+
+        // 霧のテクスチャパーティクル（オーバーレイの上に薄く漂わせる）
+        batch.setProjectionMatrix(camera.combined);
+        batch.begin();
+        for (Particle p : particles) {
+            if (p.tex == null) {
+                continue;
+            }
+            float alpha = Math.max(0f, p.life / p.maxLife) * p.alpha;
+            float w = p.texW;
+            float h = w * p.tex.getHeight() / (float) p.tex.getWidth();
+            batch.setColor(1f, 1f, 1f, alpha);
+            batch.draw(p.tex, isoX(p.x, p.y) - w / 2f, isoY(p.x, p.y) - h / 2f, w, h);
+        }
+        batch.setColor(1f, 1f, 1f, 1f);
+        batch.end();
 
         drawHud();
         if (showMinimap) {
@@ -1007,27 +1116,136 @@ public class MallScreen implements Screen, InputProcessor {
         f.draw(batch, text, cx - layout.width / 2f, y);
     }
 
-    /** タイルをドット絵スプライトで描く（batch.begin() の中で呼ぶこと）。 */
-    private void drawTile(int x, int y) {
-        float px = x * TILE;
-        float py = y * TILE;
+    /** スプライトを足元中心 (cx, baseY) に、高さ height で描く。 */
+    private void drawAnchored(Texture tex, float cx, float baseY, float height) {
+        float w = height * tex.getWidth() / (float) tex.getHeight();
+        batch.draw(tex, cx - w / 2f, baseY, w, height);
+    }
+
+    /** 地形スプライトをタイルの位置に描く（高さつきの立体物として）。 */
+    private void drawTerrainIso(Floor.Tile t, float px, float py) {
+        switch (t) {
+            case WALL:
+                drawAnchored(sprites.wall, px, py, 88);
+                break;
+            case SHELF:
+                // テナントフロア（ブティック・雑貨店）は本棚、スーパーは商品棚
+                drawAnchored(floor.type == FloorType.TENANT ? sprites.bookshelf : sprites.shelf,
+                        px, py, 80);
+                break;
+            case MACHINE:
+                drawAnchored(sprites.arcade, px, py, 88);
+                break;
+            case TABLE:
+                drawAnchored(sprites.table, px, py, 56);
+                break;
+            case COUNTER:
+                drawAnchored(sprites.counter, px, py, 64);
+                break;
+            case STAGE:
+                drawAnchored(sprites.stage, px, py, 56);
+                break;
+            case SEAT:
+                drawAnchored(sprites.bench, px, py, 56);
+                break;
+            case ESCALATOR:
+                drawAnchored(sprites.escalator, px, py, 72);
+                break;
+            case STAIRS:
+                drawAnchored(sprites.stairs, px, py, 72);
+                break;
+            case FLOOR:
+            default:
+                break;
+        }
+    }
+
+    /** タイルを2.5Dスプライトで描く（batch.begin() の中で呼ぶこと）。 */
+    private void drawTileIso(int x, int y) {
+        float px = isoX(x, y);
+        float py = isoY(x, y);
+        Floor.Tile t = floor.tiles[x][y];
         if (!floor.visited[x][y]) {
             // 未踏の場所は暗くする（スプライトをほぼ黒く着色して描く）
             batch.setColor(0.05f, 0.05f, 0.08f, 1f);
-            batch.draw(sprites.terrainTexture(floor.tiles[x][y]), px, py, TILE, TILE);
+            if (t == Floor.Tile.FLOOR) {
+                batch.draw(sprites.floorTexture(floor.type),
+                        px - ISO_TW / 2f, py - ISO_TH / 2f, ISO_TW, ISO_TH);
+            } else {
+                drawTerrainIso(t, px, py);
+            }
             batch.setColor(1f, 1f, 1f, 1f);
             return;
         }
-        Floor.Tile t = floor.tiles[x][y];
         if (t == Floor.Tile.FLOOR) {
             // フロアタイプごとにわずかに色調を変える
             float[] c = floorTint();
             batch.setColor(c[0], c[1], c[2], 1f);
-            batch.draw(sprites.floorTile(x, y), px, py, TILE, TILE);
+            batch.draw(sprites.floorTexture(floor.type),
+                    px - ISO_TW / 2f, py - ISO_TH / 2f, ISO_TW, ISO_TH);
             batch.setColor(1f, 1f, 1f, 1f);
+            // 装飾小物（床タイルに置いたもの）
+            Prop prop = propAt(x, y);
+            if (prop != null) {
+                drawPropIso(prop, px, py);
+            }
         } else {
-            batch.draw(sprites.terrainTexture(t), px, py, TILE, TILE);
+            // 床の下にひし形タイルを敷いてから立体物を描く
+            batch.draw(sprites.floorTexture(floor.type),
+                    px - ISO_TW / 2f, py - ISO_TH / 2f, ISO_TW, ISO_TH);
+            drawTerrainIso(t, px, py);
         }
+    }
+
+    /** 装飾小物を描く。 */
+    private void drawPropIso(Prop prop, float px, float py) {
+        float height;
+        switch (prop.kind) {
+            case VENDING:
+            case LAMP:
+                height = 72;
+                break;
+            case SIGN:
+                height = 64;
+                break;
+            case COINS:
+                height = 40;
+                break;
+            case LANTERN:
+            case PLANT:
+            case TRASH:
+            case CART:
+            case BENCH:
+            default:
+                height = 56;
+                break;
+        }
+        drawAnchored(sprites.propTexture(prop.kind), px, py, height);
+    }
+
+    /** アイテムをタイルの中心に描く。 */
+    private void drawItemIso(Item it) {
+        float px = isoX(it.x, it.y);
+        float py = isoY(it.x, it.y);
+        Texture tex = sprites.itemTexture(it.kind);
+        float h = 28;
+        float w = h * tex.getWidth() / (float) tex.getHeight();
+        batch.draw(tex, px - w / 2f, py - h / 2f, w, h);
+    }
+
+    /** 敵を補間位置に描く（ボスは大きく表示する）。 */
+    private void drawCharacterIso(Enemy e) {
+        float px = isoX(e.rx, e.ry);
+        float py = isoY(e.rx, e.ry);
+        float height = e.isBoss ? 90 : 64;
+        drawAnchored(sprites.enemyTexture(e.kind), px, py, height);
+    }
+
+    /** プレイヤーを補間位置に描く（歩行時の上下動つき）。 */
+    private void drawPlayerIso(float bob) {
+        float px = isoX(playerRx, playerRy);
+        float py = isoY(playerRx, playerRy) + bob;
+        drawAnchored(sprites.hero, px, py, 64);
     }
 
     /** フロアタイプごとの床の色調（スプライトの色に掛ける）。 */
@@ -1081,13 +1299,13 @@ public class MallScreen implements Screen, InputProcessor {
 
     /** 移動アニメーション：描画位置を目標タイルへ滑らかに寄せる（約0.12秒で1マス）。 */
     private void updateAnimation(float delta) {
-        float speed = TILE / 0.12f;
+        float speed = 1f / 0.12f;
         float step = speed * delta;
-        playerRx = approach(playerRx, playerX * TILE, step);
-        playerRy = approach(playerRy, playerY * TILE, step);
+        playerRx = approach(playerRx, playerX, step);
+        playerRy = approach(playerRy, playerY, step);
         for (Enemy e : enemies) {
-            e.rx = approach(e.rx, e.x * TILE, step);
-            e.ry = approach(e.ry, e.y * TILE, step);
+            e.rx = approach(e.rx, e.x, step);
+            e.ry = approach(e.ry, e.y, step);
         }
     }
 
@@ -1101,40 +1319,53 @@ public class MallScreen implements Screen, InputProcessor {
 
     /** 歩行時の上下動：移動の補間中だけ小さく跳ねる。 */
     private float playerBob() {
-        float dx = playerX * TILE - playerRx;
-        float dy = playerY * TILE - playerRy;
+        float dx = playerX - playerRx;
+        float dy = playerY - playerRy;
         float dist = (float) Math.sqrt(dx * dx + dy * dy);
         if (dist <= 0.01f) {
             return 0f;
         }
-        float progress = 1f - dist / TILE;
+        float progress = 1f - dist;
         return (float) Math.sin(progress * Math.PI) * 3f;
     }
 
-    /** 上層の霧：カメラの視野内にゆっくり漂う大きな薄い霧を発生させる。 */
+    /** 上層の霧：フロア上に霧スプライトのパーティクルを漂わせる（5Fから）。 */
     private void updateFog(float delta) {
-        if (floorNumber < 10) {
+        if (floorNumber <= 4) {
             return;
+        }
+        float alpha = 0.08f + (floorNumber - 5) * 0.02f;
+        if (alpha > 0.15f) {
+            alpha = 0.15f;
         }
         fogTimer -= delta;
         if (fogTimer > 0) {
             return;
         }
-        fogTimer = 0.7f + (float) Math.random() * 0.8f;
-        Particle p = new Particle();
-        float vx = camera.position.x - VIEW_W / 2f;
-        float vy = camera.position.y - VIEW_H / 2f;
-        p.x = vx + (float) (Math.random() * VIEW_W);
-        p.y = vy + (float) (Math.random() * VIEW_H);
-        p.vx = 6 + (float) (Math.random() * 10);
-        p.vy = 2 + (float) (Math.random() * 4);
-        p.maxLife = p.life = 5f + (float) Math.random() * 3f;
-        p.size = 60f + (float) (Math.random() * 70f);
-        p.r = 0.75f;
-        p.g = 0.8f;
-        p.b = 0.9f;
-        p.alpha = 0.05f;
-        particles.add(p);
+        fogTimer = 0.2f;
+        // 霧が残る量は薄く長持ちするパーティクルで調整する
+        int count = 0;
+        for (Particle p : particles) {
+            if (p.tex != null) {
+                count++;
+            }
+        }
+        if (count < 8) {
+            Particle p = new Particle();
+            p.x = playerX + (float) (Math.random() * 24 - 12) + 0.5f;
+            p.y = playerY + (float) (Math.random() * 24 - 12) + 0.5f;
+            p.vx = (float) (Math.random() * 0.6 - 0.3);
+            p.vy = (float) (Math.random() * 0.6 - 0.3);
+            p.maxLife = p.life = 10f;
+            p.size = 0f;
+            p.r = 1f;
+            p.g = 1f;
+            p.b = 1f;
+            p.alpha = alpha;
+            p.tex = sprites.fog;
+            p.texW = 240f;
+            particles.add(p);
+        }
     }
 
     /** HUD：階数とフロアタイプ名、HP・攻撃力・防御力・装備、ターン数、キー案内、店内放送、メッセージ。 */
