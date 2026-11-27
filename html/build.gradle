@@ -7,6 +7,7 @@ buildscript {
     classpath "org.docstr.gwt:org.docstr.gwt.gradle.plugin:2.2.7"
   }
 }
+apply plugin: 'java-library'
 apply plugin: "org.docstr.gwt"
 apply plugin: "war"
 
