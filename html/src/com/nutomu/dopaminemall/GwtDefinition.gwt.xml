@@ -11,6 +11,12 @@
   <!-- "Inherits" lines are how GWT knows where to look for code and configuration in other projects or libraries. -->
   <inherits name="com.badlogic.gdx.backends.gdx_backends_gwt" />
   <inherits name="com.nutomu.dopaminemall.DopamineMallGame" />
+  <!-- Makes the jsinterop.annotations sources visible to the GWT compiler.
+       GWT 2.11.0 ships no module covering this package, but the reflection
+       cache generator emits jsinterop annotations for the emulated JRE
+       classes, so the compiler needs their sources (provided by the
+       jsinterop-annotations:sources dependency + html/src/jsinterop/annotations/Annotations.gwt.xml). -->
+  <inherits name="jsinterop.annotations.Annotations" />
 
   <!-- You must change this if you rename packages later, or rename HtmlLauncher. -->
   <entry-point class="com.nutomu.dopaminemall.gwt.HtmlLauncher" />

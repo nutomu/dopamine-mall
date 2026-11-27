@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Local module making the jsinterop.annotations sources (from the
+     jsinterop-annotations:sources dependency) visible to the GWT compiler.
+     GWT 2.11.0 ships no module covering this package, but the reflection
+     cache generator emits jsinterop annotations for the emulated JRE classes
+     (java.lang.Boolean, java.util.List, ...), so the compiler needs their
+     sources. See: GWT's own javax.validation pattern. -->
+<module>
+  <source path="" />
+</module>
