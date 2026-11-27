@@ -177,9 +177,10 @@ public class MallScreen implements Screen, InputProcessor {
     private float playerRy;
     /** プレイヤーの向き（0=南〜7=南東）。 */
     private int playerFacing = 0;
-    /** 歩数のパリティ（0=1歩目、1=2歩目）。歩行フレームの切り替えに使う。 */
-    private int walkStep = 0;
-    /** 今の移動の距離（タイル単位、直進1・斜め√2）。歩行フレームと跳ねの進行度用。 */
+    /** 歩行アニメーションの経過時間（秒）。移動中のみ進み、止まると0に戻る。
+     * キーリピートが補間より速いと補間進捗ではフレームが張り付くため、時間で駆動する。 */
+    private float walkAnimTime = 0f;
+    /** 今の移動の距離（タイル単位、直進1・斜め√2）。移動の補間中かどうかの判定用。 */
     private float moveDist = 0f;
     /** 攻撃時の突進アニメーション（0 なら攻撃中でない）。 */
     private float attackLungeTimer = 0f;
@@ -306,7 +307,7 @@ public class MallScreen implements Screen, InputProcessor {
         playerRx = playerX;
         playerRy = playerY;
         playerFacing = 0;
-        walkStep = 0;
+        walkAnimTime = 0f;
         moveDist = 0f;
         attackLungeTimer = 0f;
         slashTimer = 0f;
@@ -553,7 +554,6 @@ public class MallScreen implements Screen, InputProcessor {
         moveDist = (float) Math.sqrt(dx * dx + dy * dy);
         playerX = nx;
         playerY = ny;
-        walkStep++;
         turn++;
         updateVisibility();
         pickUpItem();
@@ -1712,6 +1712,11 @@ public class MallScreen implements Screen, InputProcessor {
 
     /** 移動アニメーション：描画位置を目標タイルへ滑らかに寄せる（約0.12秒で1マス）。 */
     private void updateAnimation(float delta) {
+        if (playerMoving()) {
+            walkAnimTime += delta;
+        } else {
+            walkAnimTime = 0f;
+        }
         float speed = 1f / 0.12f;
         float step = speed * delta;
         playerRx = approach(playerRx, playerX, step);
@@ -1739,36 +1744,21 @@ public class MallScreen implements Screen, InputProcessor {
         return current + Math.signum(target - current) * step;
     }
 
-    /** 歩行時の上下動：移動の補間中だけ小さく跳ねる。 */
+    /** 歩行時の上下動：移動中だけ小さく跳ねる（1歩＝0.12秒ごとに1回上に跳ねる）。 */
     private float playerBob() {
-        float dx = playerX - playerRx;
-        float dy = playerY - playerRy;
-        float dist = (float) Math.sqrt(dx * dx + dy * dy);
-        if (dist <= 0.01f || moveDist <= 0f) {
+        if (!playerMoving()) {
             return 0f;
         }
-        float progress = 1f - dist / moveDist;
-        if (progress < 0f) {
-            progress = 0f;
-        }
-        if (progress > 1f) {
-            progress = 1f;
-        }
-        return (float) Math.sin(progress * Math.PI) * 3f;
+        return (float) Math.abs(Math.sin(walkAnimTime * Math.PI / 0.12f)) * 3f;
     }
 
-    /** 歩行フレーム（0〜3）：1歩で2フレーム進む。1歩目はフレーム0→1、
-     * 2歩目はフレーム2→3。止まっているときは0（静止フレームを使うため）。 */
+    /** 歩行フレーム（0〜3）：移動中は時間で切り替える（1フレーム約0.06秒）。
+     * 止まっているときは0（静止フレームを使うため）。 */
     private int walkFrame() {
         if (!playerMoving()) {
             return 0;
         }
-        float dx = playerX - playerRx;
-        float dy = playerY - playerRy;
-        float dist = (float) Math.sqrt(dx * dx + dy * dy);
-        float progress = 1f - dist / moveDist;
-        int base = (walkStep % 2 == 0) ? 0 : 2;
-        return progress < 0.5f ? base : base + 1;
+        return (int) (walkAnimTime / 0.06f) % 4;
     }
 
     /** 上層の霧：フロア上に霧スプライトのパーティクルを漂わせる（5Fから）。 */
