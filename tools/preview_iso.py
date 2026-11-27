@@ -75,13 +75,21 @@ def draw_anchored(img, tex, cx, base_y, height, name=None):
     img.paste(spr, (int(cx - w / 2), int(base_y - height)), spr)
 
 
-def draw_wall(img, px, py):
-    """背の高い壁：下端をタイルの下端に合わせ、上に1タイル分はみ出す。"""
+def draw_wall(img, px, py, tall=True):
+    """背の高い壁：下端をタイルの下端に合わせ、上に1タイル分はみ出す。
+    ゲーム本体（MallScreen.drawWall）と同じく、はみ出しは北（画面の上）へ。
+    PIL は y が下向きなので、壁チップ（64x128）の貼り付け位置は
+    (px-32, py-96)：自分のマスに前面（下半分・赤レンガ）、北のマスに
+    上面（上半分・薄茶タイル）が来る。
+    tall が偽のときは前面だけを自分のマスに描く（北のマスが壁でない場合）。"""
     wall = load("wall")
-    h = WALL_H
-    w = TILE
-    spr = wall.resize((w, h), Image.LANCZOS)
-    img.paste(spr, (px - TILE // 2, py - TILE // 2), spr)
+    if tall:
+        spr = wall.resize((TILE, WALL_H), Image.LANCZOS)
+        img.paste(spr, (px - TILE // 2, py - TILE // 2 - TILE), spr)
+    else:
+        front = wall.crop((0, wall.height // 2, wall.width, wall.height))
+        spr = front.resize((TILE, TILE), Image.LANCZOS)
+        img.paste(spr, (px - TILE // 2, py - TILE // 2), spr)
 
 
 # タイル文字 → (地形スプライト名, 高さ)（壁 "#" は1マス＝1チップで描く）
@@ -131,13 +139,15 @@ def draw_floor(layout, floor_tex, ox, oy, img):
             if ch == " ":
                 continue
             px, py = tile(x, y, ox, oy)
+            # 壁は背の高いチップで描く（床チップは敷かない。ゲーム本体と同じ）
+            # 北のマスが壁のときだけはみ出す（ゲーム本体の drawWall と同じ条件）
+            if ch == "#":
+                north_is_wall = y == 0 or layout[y - 1][x] == "#"
+                draw_wall(img, px, py, north_is_wall)
+                continue
             # 床の四角いチップ
             chip = floor_tex.resize((TILE, TILE), Image.LANCZOS)
             img.paste(chip, (px - TILE // 2, py - TILE // 2), chip)
-            # 壁は背の高いチップで描く
-            if ch == "#":
-                draw_wall(img, px, py)
-                continue
             # 地形（家具・階段など）
             if ch in TERRAIN:
                 name, height = TERRAIN[ch]

@@ -2,6 +2,8 @@
 **/build/
 local.properties
 android/libs/
+# ビルド時に CI が生成するバージョン情報（リポジトリには入れない）
+android/assets/version.txt
 *.iml
 .idea/
 .DS_Store

@@ -18,6 +18,14 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Write version file
+        # タイトル画面に表示するビルド情報（git の短いハッシュ＋ビルド日時）。
+        # android/assets は APK とデスクトップ jar の両方に含まれる共有アセット。
+        # ビルド前に書き出すこと（Gradle がアセットを取り込む前に必要）。
+        run: |
+          printf '%s\n%s\n' "$(git rev-parse --short HEAD)" "$(date -u '+%Y-%m-%d %H:%M UTC')" > android/assets/version.txt
+          cat android/assets/version.txt
+
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:

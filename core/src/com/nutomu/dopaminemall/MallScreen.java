@@ -177,9 +177,12 @@ public class MallScreen implements Screen, InputProcessor {
     private float playerRy;
     /** プレイヤーの向き（0=南〜7=南東）。 */
     private int playerFacing = 0;
-    /** 歩行アニメーションの経過時間（秒）。移動中のみ進み、止まると0に戻る。
-     * キーリピートが補間より速いと補間進捗ではフレームが張り付くため、時間で駆動する。 */
+    /** 歩行アニメーションの位相（秒）。移動中だけ進み、止まっている間は凍結する。
+     * キーリピートが補間より速いと補間進捗ではフレームが張り付くため、時間で駆動する。
+     * 0.24秒（4フレーム1周期）で折り返す。 */
     private float walkAnimTime = 0f;
+    /** ビルドのバージョン表示（タイトル画面用。CI が version.txt を生成する）。 */
+    private String buildVersion = "dev";
     /** 今の移動の距離（タイル単位、直進1・斜め√2）。移動の補間中かどうかの判定用。 */
     private float moveDist = 0f;
     /** 攻撃時の突進アニメーション（0 なら攻撃中でない）。 */
@@ -294,6 +297,7 @@ public class MallScreen implements Screen, InputProcessor {
         loadFloor();
         music.load();
         music.playTitle();
+        buildVersion = loadBuildVersion();
         Gdx.input.setInputProcessor(this);
         // Fire TV リモコンの Back ボタンを OS に取られずアプリで受け取る。
         Gdx.input.setCatchKey(Input.Keys.BACK, true);
@@ -1365,7 +1369,27 @@ public class MallScreen implements Screen, InputProcessor {
         drawCentered(hudFont, Localization.t("title.keys2"), cx, cy - 205);
         hudFont.setColor(Color.CYAN);
         drawCentered(hudFont, Localization.t("title.language"), cx, cy - 245);
+        // ビルドのバージョン（ハッシュ＋日時）。古いビルドかどうかの判別用。
+        hudFont.setColor(Color.GRAY);
+        drawCentered(hudFont, "ビルド " + buildVersion, cx, cy - 285);
         batch.end();
+    }
+
+    /** ビルドのバージョン文字列を version.txt から読む。
+     * CI がビルド時に git の短いハッシュとビルド日時（UTC）を2行で書き出す。
+     * ファイルがない場合（ローカル開発ビルド）は "dev" を返す。 */
+    private String loadBuildVersion() {
+        try {
+            if (Gdx.files.internal("version.txt").exists()) {
+                String text = Gdx.files.internal("version.txt").readString("UTF-8").trim();
+                if (!text.isEmpty()) {
+                    return text.replace("\n", " ").replace("\r", "");
+                }
+            }
+        } catch (Exception e) {
+            // 読めなければ "dev" のまま（クラッシュしない）。
+        }
+        return "dev";
     }
 
     /** スプライト確認デバッグモードの画面。
@@ -1533,7 +1557,7 @@ public class MallScreen implements Screen, InputProcessor {
             // 未踏の場所は暗くする（スプライトをほぼ黒く着色して描く）
             batch.setColor(0.05f, 0.05f, 0.08f, 1f);
             if (t == Floor.Tile.WALL) {
-                drawWall(px, py);
+                drawWall(px, py, x, y);
             } else if (t == Floor.Tile.FLOOR) {
                 batch.draw(sprites.floorTexture(floor.type),
                         px - TILE / 2f, py - TILE / 2f, TILE, TILE);
@@ -1546,7 +1570,7 @@ public class MallScreen implements Screen, InputProcessor {
             return;
         }
         if (t == Floor.Tile.WALL) {
-            drawWall(px, py);
+            drawWall(px, py, x, y);
         } else if (t == Floor.Tile.FLOOR) {
             // フロアタイプごとにわずかに色調を変える
             float[] c = floorTint();
@@ -1570,9 +1594,23 @@ public class MallScreen implements Screen, InputProcessor {
     /** 背の高い壁を描く（batch.begin() の中で呼ぶこと）。
      * 壁チップはタイルより背が高く（幅64×高さ128）、下端をタイルの下端に
      * 合わせて上に1タイル分はみ出す。行ごとのペインター法により、はみ出し
-     * 部分が上の行の床の上に、壁より手前（南）の行のものが壁の前面の上に描かれる。 */
-    private void drawWall(float px, float py) {
-        batch.draw(sprites.wall, px - TILE / 2f, py - TILE / 2f, TILE, WALL_H);
+     * 部分が上の行の床の上に描かれる。
+     * ただし北のマスが壁でない（床・出入口・家具など）場合は、はみ出しを
+     * 描かない。はみ出し（壁の上面・薄茶タイル）は床のように見えるため、
+     * 北のマスが床だと出入口や床が隠れてしまう。北が壁のときだけ上面を
+     * 描くことで、壁の連なりは背の高い壁のまま残る。 */
+    private void drawWall(float px, float py, int x, int y) {
+        boolean northIsWall = y > 0 && floor.tiles[x][y - 1] == Floor.Tile.WALL;
+        if (northIsWall) {
+            batch.draw(sprites.wall, px - TILE / 2f, py - TILE / 2f, TILE, WALL_H);
+        } else {
+            // 前面（テクスチャの下半分・赤レンガ）だけを自分のマスに描く。
+            Texture tex = sprites.wall;
+            int w = tex.getWidth();
+            int h = tex.getHeight();
+            batch.draw(tex, px - TILE / 2f, py - TILE / 2f, TILE, TILE,
+                    0, h / 2, w, h / 2, false, false);
+        }
     }
 
     /** 装飾小物を描く。 */
@@ -1710,12 +1748,16 @@ public class MallScreen implements Screen, InputProcessor {
         return 2f;
     }
 
-    /** 移動アニメーション：描画位置を目標タイルへ滑らかに寄せる（約0.12秒で1マス）。 */
+    /** 移動アニメーション：描画位置を目標タイルへ滑らかに寄せる（約0.12秒で1マス）。
+     * 歩行の位相（walkAnimTime）は移動中だけ進め、止まっている間は凍結する。
+     * 止まるたびに 0 にリセットすると、ゆっくり1歩ずつタップしたときに毎歩
+     * f0 から始まって同じ足ばかり出るため。0.24秒（4フレーム1周期）で折り返す。 */
     private void updateAnimation(float delta) {
         if (playerMoving()) {
             walkAnimTime += delta;
-        } else {
-            walkAnimTime = 0f;
+            if (walkAnimTime >= 0.24f) {
+                walkAnimTime -= 0.24f;
+            }
         }
         float speed = 1f / 0.12f;
         float step = speed * delta;
