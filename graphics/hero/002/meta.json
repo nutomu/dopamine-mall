@@ -1,1 +1,26 @@
-{"character":"hero","colors":27,"date":"2026-11-27","files":["manual.webp","splash.png","atlas.png","atlas.json","meta.json","contact.png"],"id":"hero-002","iou":0.748,"notes":"2番目のデザイン。女の子。長いシルバーがかったラベンダー色の髪を高いポニーテールにし、星形のヘアピン。大きめのミントグリーンのトラックジャケット、黒のショートパンツ＋レギンス、ピンクの厚底スニーカー。左手に携帯ゲーム機、右手にタピオカドリンク。ref は低解像度スプラッシュ（128x256）を使用。歩行ゲート通過（不良セル0）。ゲームには組み込んでいない（候補）。","qa_errors":[],"qa_ok":true,"qa_warnings":[],"ref_used":"低解像度スプラッシュ hero002_splash_128x256.png","source_dir":"spritekiln-v2-hero002","splash_colors":11,"splash_size":"128x256","status":"候補","style":"レトロピクセルアート調","style_version":1}
+{
+  "character": "hero",
+  "colors": 27,
+  "date": "2026-11-27",
+  "files": [
+    "manual.webp",
+    "splash.png",
+    "atlas.png",
+    "atlas.json",
+    "meta.json",
+    "contact.png"
+  ],
+  "id": "hero-002",
+  "iou": 0.726,
+  "notes": "2番目のデザイン。女の子。長いシルバーがかったラベンダー色の髪を高いポニーテールにし、星形のヘアピン。大きめのミントグリーンのトラックジャケット、黒のショートパンツ＋レギンス、ピンクの厚底スニーカー。左手に携帯ゲーム機、右手にタピオカドリンク。ref は低解像度スプラッシュ（128x256）を使用。歩行ゲート通過（不良セル0）。ゲームには組み込んでいない（候補）。【2026-11-27 修正】にゅーいち指摘の3点（肩がいかつい→肩幅を狭く・袖を細くして柔らかく／お尻がオムツみたい→ショートパンツを前後につぶした楕円にし、ジャケット裾も細くしてすっきり／前髪がない→fringe 0.5→0.95＋前髪の塊パーツを追加し、正面系で前髪が見える）を修正。IoU 0.748→0.726（肩を狭くしたためシルエットが細くなった分）。修正後の歩行ゲートも不良セル0。",
+  "qa_errors": [],
+  "qa_ok": true,
+  "qa_warnings": [],
+  "ref_used": "低解像度スプラッシュ hero002_splash_128x256.png",
+  "source_dir": "spritekiln-v2-hero002",
+  "splash_colors": 11,
+  "splash_size": "128x256",
+  "status": "候補",
+  "style": "レトロピクセルアート調",
+  "style_version": 1
+}
