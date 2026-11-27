@@ -2,8 +2,9 @@
 """描画の不具合の再現シーンを描くスクリプト。
 
 ゲーム本体（MallScreen.java）の描画ループを忠実に再現する：
-- ペインター法：行ごとに北（y=0）から南へ。各行でまず全タイルを描き、
-  次にその行のキャラクターを描く。
+- 2パス構成：床を全部先に描き、壁・家具・キャラ・アイテムを
+  足元の画面Yで奥（北）から手前にソートして描く（3/4見下ろし描画）。
+  PIL は y が下向きなので、ソートは足元画面Yの昇順。
 - 壁は 64x128 のチップで、下端をタイルの下端に合わせ、北へ1タイル分
   はみ出す（自分のマス＝前面・赤レンガ、北のマス＝上面・薄茶タイル）。
 - 家具・キャラクターは足元中心から北へ高さ分だけ描く。
@@ -59,7 +60,8 @@ def draw_wall_fixed(img, px, py, north_is_wall):
 
 
 def render(layout, floor_tex_name, mode, label):
-    """レイアウトをゲーム忠実に描く。mode は current / fixed。"""
+    """レイアウトをゲーム忠実に描く。mode は current / fixed。
+    描画順はゲーム本体と同じ2パス（床先描き＋足元Yソート）。"""
     rows = len(layout)
     cols = len(layout[0])
     ox, oy = 96, 160
@@ -73,6 +75,18 @@ def render(layout, floor_tex_name, mode, label):
         "常に北へ1マス" if mode == "current" else "北が壁のときだけ"),
         font=font(18), fill=(180, 180, 180))
     floor_tex = load(floor_tex_name)
+    # (a) 床パス：壁以外の全タイルに床チップを描く
+    for y in range(rows):
+        for x in range(cols):
+            ch = layout[y][x]
+            if ch == " " or ch == "#":
+                continue
+            px, py = tile(x, y, ox, oy)
+            chip = floor_tex.resize((TILE, TILE), Image.LANCZOS)
+            img.paste(chip, (px - TILE // 2, py - TILE // 2), chip)
+    # (b) オブジェクトパス：集めて足元Yでソートして描く
+    entries = []
+    seq = 0
     for y in range(rows):
         for x in range(cols):
             ch = layout[y][x]
@@ -81,26 +95,42 @@ def render(layout, floor_tex_name, mode, label):
             px, py = tile(x, y, ox, oy)
             if ch == "#":
                 north = layout[y - 1][x] if y > 0 else "#"
-                if mode == "current":
-                    draw_wall_current(img, px, py)
-                else:
-                    draw_wall_fixed(img, px, py, north == "#")
-                continue
-            chip = floor_tex.resize((TILE, TILE), Image.LANCZOS)
-            img.paste(chip, (px - TILE // 2, py - TILE // 2), chip)
-            if ch in TERRAIN:
+                entries.append((py + TILE // 2, 1, px, seq,
+                                ("wall", px, py, north)))
+                seq += 1
+            elif ch in TERRAIN:
                 name, height = TERRAIN[ch]
-                draw_anchored(img, load(name), px, py, height)
-            if ch in ACTORS:
+                entries.append((py, 2, px, seq,
+                                ("terrain", name, px, py, height)))
+                seq += 1
+            elif ch in ACTORS:
                 name, height = ACTORS[ch]
-                if height <= 40:
-                    tex = load(name)
-                    w = max(1, int(height * tex.width / tex.height))
-                    spr = tex.resize((w, height), Image.LANCZOS)
-                    img.paste(spr, (px - w // 2, py - height // 2), spr)
-                else:
-                    draw_shadow(img, px, py, 40)
-                    draw_anchored(img, load(name), px, py, height, name)
+                rank = 0 if height <= 40 else 3
+                entries.append((py, rank, px, seq,
+                                ("actor", name, px, py, height)))
+                seq += 1
+    entries.sort(key=lambda e: (e[0], e[1], e[2], e[3]))
+    for _, _, _, _, draw in entries:
+        kind = draw[0]
+        if kind == "wall":
+            _, px, py, north = draw
+            if mode == "current":
+                draw_wall_current(img, px, py)
+            else:
+                draw_wall_fixed(img, px, py, north == "#")
+        elif kind == "terrain":
+            _, name, px, py, height = draw
+            draw_anchored(img, load(name), px, py, height)
+        else:
+            _, name, px, py, height = draw
+            if height <= 40:
+                tex = load(name)
+                w = max(1, int(height * tex.width / tex.height))
+                spr = tex.resize((w, height), Image.LANCZOS)
+                img.paste(spr, (px - w // 2, py - height // 2), spr)
+            else:
+                draw_shadow(img, px, py, 40)
+                draw_anchored(img, load(name), px, py, height, name)
     return img
 
 

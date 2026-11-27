@@ -18,6 +18,7 @@ import com.badlogic.gdx.utils.viewport.FitViewport;
 import com.badlogic.gdx.utils.viewport.Viewport;
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 
 /**
@@ -55,7 +56,9 @@ import java.util.List;
  *   PNG（android/assets/sprites2d/）を描画する。1マス＝1つのマップチップ
  *   （壁チップは上面と前面を1枚に含む）。床・壁は四角いチップをグリッド通りに
  *   並べ、家具・キャラクターは立った姿で描く。
- * - 描画順はペインター法（行ごとに上から下へ）。カメラはプレイヤーを追従する。
+ * - 描画順は3/4見下ろし（top-down oblique）の定石：床を全部先に描き、
+ *   壁・家具・小物・アイテム・敵・プレイヤーを足元の画面Yで奥から手前に
+ *   ソートして描く（Yソート／ペインター法）。カメラはプレイヤーを追従する。
  * - 階層別の雰囲気：下層は明るい現代のモール、上層ほど暗く神秘的に（霧・ランタンの光）。
  * - 移動はターン制のまま、マスからマスへ滑らかに補間するアニメーションを入れる。
  * ※ HUD の文字はデフォルトフォントが ASCII のみのため英字表記。
@@ -101,8 +104,8 @@ import java.util.List;
  *   そのまま1枚描くだけ）。面分割（上面・前面バンド・角）はやめた。
  * 壁の高さ・重なりとキャラクターのサイズ正規化、スプライト確認デバッグモード。
  * - 壁チップはタイルより背が高い（幅64×高さ128、タイル2枚分）。下端を
- *   タイルの下端に合わせ、上に1タイル分はみ出して描く。描画順は行ごとの
- *   ペインター法のままで、壁のはみ出しが上の行の床の上に、壁より手前
+ *   タイルの下端に合わせ、上に1タイル分はみ出して描く。描画順は床先描き＋
+ *   足元Yソートのため、壁のはみ出しは先に描かれた床の上に、壁より手前
  *   （南）の行のキャラクターが壁の前面の上に描かれる。
  * - キャラクターの表示サイズ正規化：tools/make_norm.py で測った実寸
  *   （norm.json）を使い、方向ごとの見た目の大きさのばらつきを抑える。
@@ -269,6 +272,81 @@ public class MallScreen implements Screen, InputProcessor {
             this.kind = kind;
         }
     }
+    /** 3/4見下ろし描画のソート対象1単位（2026-11-28：床先描き＋足元Yソート）。
+     * 描く絵そのものは持たず、既存の drawWall／drawTerrain／drawProp／
+     * drawItem／drawCharacter／drawPlayer を呼ぶための軽量な記述子。
+     * kind はソートの副キー1（種別ランク）でもある。
+     * AlwaysFront層はなし：現状のアセットには屋根の張り出し・樹冠のような
+     * 「常にキャラの上に描くべきもの」がなく、壁のはみ出しは壁自身の
+     * スプライトに含まれるため。必要になれば別パスで追加する。 */
+    private static class Renderable {
+        static final int KIND_ITEM = 0;
+        static final int KIND_WALL = 1;
+        static final int KIND_TERRAIN = 2;
+        static final int KIND_ENEMY = 3;
+        static final int KIND_PLAYER = 4;
+
+        int kind;
+        /** 足元の画面座標（ワールド座標、y-up。北ほど大きい）。ソートキー。 */
+        float footX, footY;
+        /** アンカーとなるタイル（壁・家具・小物・アイテム用）。 */
+        int x, y;
+        /** 決定的なタイブレーク用ID（タイルは y*10000+x、敵は敵一覧の添字、プレイヤーは0）。 */
+        int id;
+        /** 未踏タイルの壁・家具は暗色化して描く。 */
+        boolean dark;
+        Enemy enemy;
+        Item item;
+        Prop prop;
+    }
+
+    /** 足元Yソート用コンパレータ（1インスタンスを使い回す）。
+     * footYの降順（北＝奥から先に描く）。同値は種別ランクの昇順
+     * （同じ足元Yではキャラが壁・家具より後に＝手前に描かれる）、
+     * 次にfootXの昇順（西から描く）、最後にIDの昇順で決定的にする。 */
+    private static final Comparator<Renderable> RENDERABLE_ORDER =
+            new Comparator<Renderable>() {
+                @Override
+                public int compare(Renderable a, Renderable b) {
+                    int c = Float.compare(b.footY, a.footY);
+                    if (c != 0) {
+                        return c;
+                    }
+                    c = a.kind - b.kind;
+                    if (c != 0) {
+                        return c;
+                    }
+                    c = Float.compare(a.footX, b.footX);
+                    if (c != 0) {
+                        return c;
+                    }
+                    return a.id - b.id;
+                }
+            };
+
+    /** 毎フレームの描画対象リスト（フィールドで使い回し、clear() する）。 */
+    private final ArrayList<Renderable> renderables = new ArrayList<Renderable>();
+    /** Renderable の再利用プール（毎フレームの new を抑える）。 */
+    private final ArrayList<Renderable> renderablePool = new ArrayList<Renderable>();
+    private int renderablePoolUsed = 0;
+
+    /** プールから Renderable を1つ借りる（なければ作ってプールに足す）。 */
+    private Renderable obtainRenderable() {
+        Renderable r;
+        if (renderablePoolUsed < renderablePool.size()) {
+            r = renderablePool.get(renderablePoolUsed);
+        } else {
+            r = new Renderable();
+            renderablePool.add(r);
+        }
+        renderablePoolUsed++;
+        r.enemy = null;
+        r.item = null;
+        r.prop = null;
+        r.dark = false;
+        return r;
+    }
+
     private List<Prop> props = new ArrayList<Prop>();
     private List<Particle> particles = new ArrayList<Particle>();
     /** 攻撃・被弾時の画面フラッシュ（0 になると消える）。 */
@@ -1221,30 +1299,23 @@ public class MallScreen implements Screen, InputProcessor {
         updateAnimation(delta);
         updateFog(delta);
 
-        // タイルと登場人物を見下ろしスプライトで描く（ペインター法：行ごとに上から下へ）
+        // 3/4見下ろし描画（2026-11-28）：床を全部先に描き、壁・家具・小物・
+        // アイテム・敵・プレイヤーを足元の前後位置で奥から手前に描く。
+        // 行単位のペインター法はやめ、1つのリストに集めて足元Yでソートする。
         float bob = playerBob();
         batch.setProjectionMatrix(camera.combined);
         batch.begin();
+        // (a) 床パス：壁タイルの下には床を描かない（現行通り）。
         for (int y = 0; y < floor.h; y++) {
             for (int x = 0; x < floor.w; x++) {
-                drawTile(x, y);
-                Item it = itemAt(x, y);
-                if (it != null && floor.visited[x][y]) {
-                    drawItem(it);
-                }
+                drawFloor(x, y);
             }
-            // この行にいる敵・プレイヤー（補間位置の行で判定）
-            for (Enemy e : enemies) {
-                if (!floor.visited[e.x][e.y]) {
-                    continue;
-                }
-                if ((int) Math.floor(e.ry + 0.5f) == y) {
-                    drawCharacter(e);
-                }
-            }
-            if ((int) Math.floor(playerRy + 0.5f) == y) {
-                drawPlayer(bob);
-            }
+        }
+        // (b) オブジェクトパス：集めてソートして描く。
+        collectRenderables();
+        java.util.Collections.sort(renderables, RENDERABLE_ORDER);
+        for (int i = 0; i < renderables.size(); i++) {
+            drawRenderable(renderables.get(i), bob);
         }
         batch.end();
 
@@ -1531,7 +1602,7 @@ public class MallScreen implements Screen, InputProcessor {
     private void drawTerrain(Floor.Tile t, float px, float py) {
         switch (t) {
             case WALL:
-                // 壁は drawTile から1チップで描く（ここには来ない）
+                // 壁は drawRenderable から1チップで描く（ここには来ない）
                 break;
             case SHELF:
                 // テナントフロア（ブティック・雑貨店）は本棚、スーパーは商品棚
@@ -1565,54 +1636,161 @@ public class MallScreen implements Screen, InputProcessor {
         }
     }
 
-    /** タイルを見下ろしスプライトで描く（batch.begin() の中で呼ぶこと）。
-     * 壁は1マス＝1チップ（上面と前面を1枚に含む壁チップをタイルにそのまま1枚描く）。 */
-    private void drawTile(int x, int y) {
+    /** 床パス：タイルの床テクスチャだけを描く（batch.begin() の中で呼ぶこと）。
+     * 壁タイルの下には床を描かない。未踏は暗色化し、踏破済みのFLOORタイル
+     * のみに floorTint を掛ける（地形タイルの床には掛けない。現行通り）。 */
+    private void drawFloor(int x, int y) {
+        Floor.Tile t = floor.tiles[x][y];
+        if (t == Floor.Tile.WALL) {
+            return;
+        }
         float px = tileX(x);
         float py = tileY(y);
-        Floor.Tile t = floor.tiles[x][y];
         if (!floor.visited[x][y]) {
-            // 未踏の場所は暗くする（スプライトをほぼ黒く着色して描く）
             batch.setColor(0.05f, 0.05f, 0.08f, 1f);
-            if (t == Floor.Tile.WALL) {
-                drawWall(px, py, x, y);
-            } else if (t == Floor.Tile.FLOOR) {
-                batch.draw(sprites.floorTexture(floor.type),
-                        px - TILE / 2f, py - TILE / 2f, TILE, TILE);
-            } else {
-                batch.draw(sprites.floorTexture(floor.type),
-                        px - TILE / 2f, py - TILE / 2f, TILE, TILE);
-                drawTerrain(t, px, py);
-            }
+            batch.draw(sprites.floorTexture(floor.type),
+                    px - TILE / 2f, py - TILE / 2f, TILE, TILE);
             batch.setColor(1f, 1f, 1f, 1f);
             return;
         }
-        if (t == Floor.Tile.WALL) {
-            drawWall(px, py, x, y);
-        } else if (t == Floor.Tile.FLOOR) {
+        if (t == Floor.Tile.FLOOR) {
             // フロアタイプごとにわずかに色調を変える
             float[] c = floorTint();
             batch.setColor(c[0], c[1], c[2], 1f);
             batch.draw(sprites.floorTexture(floor.type),
                     px - TILE / 2f, py - TILE / 2f, TILE, TILE);
             batch.setColor(1f, 1f, 1f, 1f);
-            // 装飾小物（床タイルに置いたもの）
-            Prop prop = propAt(x, y);
-            if (prop != null) {
-                drawProp(prop, px, py);
-            }
         } else {
-            // 床の下に四角いチップを敷いてから立体物を描く
             batch.draw(sprites.floorTexture(floor.type),
                     px - TILE / 2f, py - TILE / 2f, TILE, TILE);
-            drawTerrain(t, px, py);
+        }
+    }
+
+    /** オブジェクトパス：壁・家具・小物・アイテム・敵・プレイヤーを
+     * Renderable として1つの再利用リストに集める。描画位置・サイズ・色の
+     * 見た目は現行と同一。未踏タイルの小物・アイテム・敵は描かない
+     * （現行通り）。プレイヤーは常に描く。 */
+    private void collectRenderables() {
+        renderables.clear();
+        renderablePoolUsed = 0;
+        for (int y = 0; y < floor.h; y++) {
+            for (int x = 0; x < floor.w; x++) {
+                Floor.Tile t = floor.tiles[x][y];
+                boolean visited = floor.visited[x][y];
+                if (t == Floor.Tile.WALL) {
+                    Renderable r = obtainRenderable();
+                    r.kind = Renderable.KIND_WALL;
+                    r.footX = tileX(x);
+                    // 壁の足元＝描画矩形の下端＝タイル南縁
+                    r.footY = tileY(y) - TILE / 2f;
+                    r.x = x;
+                    r.y = y;
+                    r.id = y * 10000 + x;
+                    r.dark = !visited;
+                    renderables.add(r);
+                } else if (t != Floor.Tile.FLOOR) {
+                    // 家具・地形（SHELF/MACHINE/TABLE/COUNTER/STAGE/SEAT/ESCALATOR/STAIRS）
+                    Renderable r = obtainRenderable();
+                    r.kind = Renderable.KIND_TERRAIN;
+                    r.footX = tileX(x);
+                    // 家具の描画基準はタイル中心（drawAnchored の baseY）
+                    r.footY = tileY(y);
+                    r.x = x;
+                    r.y = y;
+                    r.id = y * 10000 + x;
+                    r.dark = !visited;
+                    renderables.add(r);
+                } else {
+                    // 装飾小物（床タイルに置いたもの。未踏では描かない）
+                    Prop prop = propAt(x, y);
+                    if (prop != null && visited) {
+                        Renderable r = obtainRenderable();
+                        r.kind = Renderable.KIND_TERRAIN;
+                        r.footX = tileX(x);
+                        r.footY = tileY(y);
+                        r.x = x;
+                        r.y = y;
+                        r.id = y * 10000 + x;
+                        r.prop = prop;
+                        renderables.add(r);
+                    }
+                }
+                Item it = itemAt(x, y);
+                if (it != null && visited) {
+                    Renderable r = obtainRenderable();
+                    r.kind = Renderable.KIND_ITEM;
+                    r.footX = tileX(x);
+                    r.footY = tileY(y);
+                    r.x = x;
+                    r.y = y;
+                    r.id = y * 10000 + x;
+                    r.item = it;
+                    renderables.add(r);
+                }
+            }
+        }
+        for (int i = 0; i < enemies.size(); i++) {
+            Enemy e = enemies.get(i);
+            if (!floor.visited[e.x][e.y]) {
+                continue;
+            }
+            Renderable r = obtainRenderable();
+            r.kind = Renderable.KIND_ENEMY;
+            r.footX = tileX(e.rx);
+            r.footY = tileY(e.ry);
+            r.x = e.x;
+            r.y = e.y;
+            r.id = i;
+            r.enemy = e;
+            renderables.add(r);
+        }
+        Renderable p = obtainRenderable();
+        p.kind = Renderable.KIND_PLAYER;
+        p.footX = tileX(playerRx);
+        p.footY = tileY(playerRy);
+        p.x = playerX;
+        p.y = playerY;
+        p.id = 0;
+        renderables.add(p);
+    }
+
+    /** Renderable 1つを既存の描画メソッドで描く（batch.begin() の中で呼ぶこと）。
+     * 未踏タイルの壁・家具は暗色化する。 */
+    private void drawRenderable(Renderable r, float bob) {
+        if (r.dark) {
+            batch.setColor(0.05f, 0.05f, 0.08f, 1f);
+        }
+        switch (r.kind) {
+            case Renderable.KIND_ITEM:
+                drawItem(r.item);
+                break;
+            case Renderable.KIND_WALL:
+                drawWall(tileX(r.x), tileY(r.y), r.x, r.y);
+                break;
+            case Renderable.KIND_TERRAIN:
+                if (r.prop != null) {
+                    drawProp(r.prop, tileX(r.x), tileY(r.y));
+                } else {
+                    drawTerrain(floor.tiles[r.x][r.y], tileX(r.x), tileY(r.y));
+                }
+                break;
+            case Renderable.KIND_ENEMY:
+                drawCharacter(r.enemy);
+                break;
+            case Renderable.KIND_PLAYER:
+            default:
+                drawPlayer(bob);
+                break;
+        }
+        if (r.dark) {
+            batch.setColor(1f, 1f, 1f, 1f);
         }
     }
 
     /** 背の高い壁を描く（batch.begin() の中で呼ぶこと）。
      * 壁チップはタイルより背が高く（幅64×高さ128）、下端をタイルの下端に
-     * 合わせて上に1タイル分はみ出す。行ごとのペインター法により、はみ出し
-     * 部分が上の行の床の上に描かれる。
+     * 合わせて上に1タイル分はみ出す。床は先に描き終わっているため、
+     * はみ出し部分が北隣の床の上に描かれても問題ない。
      * ただし北のマスが壁でない（床・出入口・家具など）場合は、はみ出しを
      * 描かない。はみ出し（壁の上面・薄茶タイル）は床のように見えるため、
      * 北のマスが床だと出入口や床が隠れてしまう。北が壁のときだけ上面を

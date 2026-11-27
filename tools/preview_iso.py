@@ -128,42 +128,72 @@ ACTORS = {
 
 
 def draw_floor(layout, floor_tex, ox, oy, img):
-    """レイアウトをペインター法（行ごとに上から下へ）で描く。
-    壁は背の高いチップ（下端をタイルの下端に合わせ、上に1タイル分はみ出す）。
+    """レイアウトを3/4見下ろし描画（床先描き＋足元Yソート）で描く。
+    ゲーム本体（MallScreen.java）と同じ2パス構成。
+    PIL は y が下向きなので、北（奥）ほど画面Yが小さい。ソートは
+    足元の画面Yの昇順（北から先に描く）、同値は種別ランクの昇順
+    （アイテム0→壁1→地形・小物2→キャラ3）、次に画面Xの昇順。
+    壁の足元はタイル南縁（画面Yは py+32）、他はタイル中心 py。
     キャラクターは正規化したサイズで描き、足元に影を付ける。"""
     rows = len(layout)
     cols = len(layout[0])
+    # (a) 床パス：壁以外の全タイルに床チップを描く
+    for y in range(rows):
+        for x in range(cols):
+            ch = layout[y][x]
+            if ch == " " or ch == "#":
+                continue
+            px, py = tile(x, y, ox, oy)
+            chip = floor_tex.resize((TILE, TILE), Image.LANCZOS)
+            img.paste(chip, (px - TILE // 2, py - TILE // 2), chip)
+    # (b) オブジェクトパス：集めて足元Yでソートして描く
+    # エントリ: (足元画面Y, 種別ランク, 画面X, 通し番号, 描画内容)
+    entries = []
+    seq = 0
     for y in range(rows):
         for x in range(cols):
             ch = layout[y][x]
             if ch == " ":
                 continue
             px, py = tile(x, y, ox, oy)
-            # 壁は背の高いチップで描く（床チップは敷かない。ゲーム本体と同じ）
-            # 北のマスが壁のときだけはみ出す（ゲーム本体の drawWall と同じ条件）
             if ch == "#":
+                # 壁は背の高いチップで描く（床チップは敷かない。ゲーム本体と同じ）
+                # 北のマスが壁のときだけはみ出す（ゲーム本体の drawWall と同じ条件）
                 north_is_wall = y == 0 or layout[y - 1][x] == "#"
-                draw_wall(img, px, py, north_is_wall)
-                continue
-            # 床の四角いチップ
-            chip = floor_tex.resize((TILE, TILE), Image.LANCZOS)
-            img.paste(chip, (px - TILE // 2, py - TILE // 2), chip)
-            # 地形（家具・階段など）
-            if ch in TERRAIN:
+                entries.append((py + TILE // 2, 1, px, seq,
+                                ("wall", px, py, north_is_wall)))
+                seq += 1
+            elif ch in TERRAIN:
                 name, height = TERRAIN[ch]
-                draw_anchored(img, load(name), px, py, height)
-            # キャラクター／アイテム／小物
-            if ch in ACTORS:
+                entries.append((py, 2, px, seq,
+                                ("terrain", name, px, py, height)))
+                seq += 1
+            elif ch in ACTORS:
                 name, height = ACTORS[ch]
-                if height <= 40:
-                    # アイテム・小物はタイル中心に置く
-                    tex = load(name)
-                    w = max(1, int(height * tex.width / tex.height))
-                    spr = tex.resize((w, height), Image.LANCZOS)
-                    img.paste(spr, (px - w // 2, py - height // 2), spr)
-                else:
-                    draw_shadow(img, px, py, 40)
-                    draw_anchored(img, load(name), px, py, height, name)
+                rank = 0 if height <= 40 else 3  # アイテムは0、キャラは3
+                entries.append((py, rank, px, seq,
+                                ("actor", name, px, py, height)))
+                seq += 1
+    entries.sort(key=lambda e: (e[0], e[1], e[2], e[3]))
+    for _, _, _, _, draw in entries:
+        kind = draw[0]
+        if kind == "wall":
+            _, px, py, tall = draw
+            draw_wall(img, px, py, tall)
+        elif kind == "terrain":
+            _, name, px, py, height = draw
+            draw_anchored(img, load(name), px, py, height)
+        else:
+            _, name, px, py, height = draw
+            if height <= 40:
+                # アイテム・小物はタイル中心に置く
+                tex = load(name)
+                w = max(1, int(height * tex.width / tex.height))
+                spr = tex.resize((w, height), Image.LANCZOS)
+                img.paste(spr, (px - w // 2, py - height // 2), spr)
+            else:
+                draw_shadow(img, px, py, 40)
+                draw_anchored(img, load(name), px, py, height, name)
 
 
 def add_glow(img, cx, cy, radius, color, alpha):
