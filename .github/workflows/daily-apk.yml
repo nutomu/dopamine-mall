@@ -102,8 +102,6 @@ jobs:
       contents: read
       pages: write
       id-token: write
-      # Pages サイトの初回作成（POST /repos/.../pages）には administration 権限が必要。
-      administration: write
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
