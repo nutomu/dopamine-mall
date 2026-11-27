@@ -67,6 +67,10 @@ jobs:
           body: |
             ドパミン・モールの日次ビルド（開発版）です。
 
+            ## ブラウザ（Web版）で遊ぶ
+            https://nutomu.github.io/dopamine-mall/ を開くと、ブラウザでそのまま遊べます（インストール不要）。
+            キーボードの矢印キー / WASD で遊べます。
+
             ## Fire TV Stick で遊ぶ
             下の dopamine-mall-debug.apk をダウンロードして、Fire TV Stick へサイドロードして遊べます。
 
@@ -89,3 +93,67 @@ jobs:
             dopamine-mall-debug.apk
             dopamine-mall-desktop.jar
           fail_on_unmatched_files: true
+
+  # Web版（HTML5/GWT）のビルドと GitHub Pages へのデプロイ。
+  # APK・jar の build ジョブとは別ジョブで並行して動かす。
+  web:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Write version file
+        # タイトル画面に表示するビルド情報（git の短いハッシュ＋ビルド日時）。
+        # GWT の PreloaderGenerator が android/assets を dist に取り込むため、
+        # html:dist の前に書き出すこと。
+        run: |
+          printf '%s\n%s\n' "$(git rev-parse --short HEAD)" "$(date -u '+%Y-%m-%d %H:%M UTC')" > android/assets/version.txt
+          cat android/assets/version.txt
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+
+      - name: Build Web version
+        run: ./gradlew :html:dist --stacktrace
+
+      - name: Check dist contents
+        # dist に index.html とアセット一覧（assets.txt）が含まれていること。
+        # assets.txt が無いとゲーム起動時にアセットが読めない。
+        run: |
+          echo "--- dist top level ---"
+          ls -la html/build/dist/
+          echo "--- assets ---"
+          ls html/build/dist/assets/ | head -20
+          test -f html/build/dist/index.html
+          test -f html/build/dist/assets/assets.txt
+          echo "--- assets.txt (first 10 lines) ---"
+          head -10 html/build/dist/assets/assets.txt
+          echo "--- version.txt in assets ---"
+          grep -c version.txt html/build/dist/assets/assets.txt || true
+
+      - name: Configure Pages
+        # 初回は Pages 自体が未設定のため、公開元を GitHub Actions にする。
+        # 既に設定済みの場合は何も変わらない。
+        uses: actions/configure-pages@v5
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: html/build/dist
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

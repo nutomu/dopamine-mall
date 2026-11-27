@@ -1,0 +1,125 @@
+buildscript {
+  repositories {
+    mavenCentral()
+    gradlePluginPortal()
+  }
+  dependencies {
+    classpath "org.docstr.gwt:org.docstr.gwt.gradle.plugin:2.2.7"
+  }
+}
+apply plugin: "org.docstr.gwt"
+apply plugin: "war"
+
+// GWT 2.11.0：libGDX 1.12.1 の gdx-liftoff 標準構成（Java 11 以上で動く）。
+// 従来の GWT 2.8.2 は Java 8 専用のため、Java 17 の CI では使えない。
+// gdx-backend-gwt は libGDX 1.12.1 の標準のものを使う。
+var outputPath = "build/dist/"
+
+gwt {
+  gwtVersion = "2.11.0"
+  maxHeapSize = '1G' // Default 256m is not enough for the GWT compiler. GWT is HUNGRY.
+  minHeapSize = '1G'
+
+  modules = ["com.nutomu.dopaminemall.GwtDefinition"]
+
+  //// This affects where the final resulting build will be placed.
+  war = file(outputPath)
+  compiler.optimize = 9
+  compiler.strict = true
+  //// The next line can be useful to uncomment if you want output that hasn't been obfuscated.
+//  compiler.style = "DETAILED"
+  sourceLevel = '1.11'
+
+  devMode {
+    port = 8080
+    startupUrl = "http://127.0.0.1:8080/index.html"
+    modules = ["com.nutomu.dopaminemall.GwtDefinitionSuperdev"]
+  }
+  superDev {
+    modules = ["com.nutomu.dopaminemall.GwtDefinitionSuperdev"]
+  }
+}
+
+gwt.extraSourceDirs.from(
+  file('src'),
+  files(project(":core").file('src')),
+  files(project(':core').sourceSets.main.allJava.srcDirs),
+  files(sourceSets.main.output.resourcesDir)
+)
+
+dependencies {
+  implementation project(':core')
+  api "com.badlogicgames.gdx:gdx:$gdxVersion:sources"
+  api "com.badlogicgames.gdx:gdx-backend-gwt:$gdxVersion"
+  api "com.badlogicgames.gdx:gdx-backend-gwt:$gdxVersion:sources"
+  api "com.google.jsinterop:jsinterop-annotations:2.1.0:sources"
+  constraints {
+    implementation "jakarta.servlet:jakarta.servlet-api:6.1.0"
+  }
+}
+
+//// We delete the (temporary) war/ folder because if any extra files get into it, problems occur.
+//// The war/ folder shouldn't be committed to version control.
+clean.delete += [file("war")]
+
+//// The compileJava task is run at the start of any GWT build; we need to clean the output directory BEFORE
+//// anything can be built into that output directory, so the rest of the build can use it.
+tasks.named("compileJava").get().dependsOn("clean")
+
+//// You should always use the dist task (which could be folded into the "other" group), not the build task.
+tasks.register('dist') {
+  //// This can't depend on the "clean" task because that would remove things it needs.
+  //// You may want to run "gradlew html:clean" before builds if you encounter leftovers from previous runs.
+  dependsOn(["build"])
+  doLast {
+    file(outputPath).mkdirs()
+    copy {
+      from("build/gwt/out") {
+        exclude '**/*.symbolMap' // Not used by a dist, and these can be large.
+      }
+      into outputPath
+    }
+    copy {
+      from("webapp") {
+        exclude 'index.html' // We edit this HTML file later.
+        exclude 'refresh.png' // We don't need this button; this saves some bytes.
+      }
+      into outputPath
+    }
+    copy {
+      from("webapp") {
+        // These next two lines take the index.html page and remove the superdev refresh button.
+        include 'index.html'
+        filter { String line -> line.replaceAll('<a class="superdev" .+', '') }
+        // This does not modify the original index.html, only the copy in the dist.
+      }
+      into outputPath
+    }
+    copy {
+      from "war"
+      into outputPath
+    }
+  }
+}
+
+tasks.register("distZip", Zip) {
+  dependsOn("dist")
+  from(outputPath)
+  archiveVersion = projectVersion
+  archiveBaseName.set("${appName}-dist")
+  //// The result will be in html/build/ with a name containing "-dist".
+  destinationDirectory.set(file("build"))
+}
+
+//// The superDev task, which may be grouped under "gwt", allows updating your sources in your editor and
+//// seeing your changes as soon as you refresh in the browser.
+tasks.register('superDev') {
+  dependsOn("dist", "gwtDevMode")
+  group("gwt")
+}
+
+tasks.compileJava.dependsOn("processResources")
+
+java.sourceCompatibility = JavaVersion.VERSION_11
+java.targetCompatibility = JavaVersion.VERSION_11
+sourceSets.main.java.srcDirs = [ "src/" ]

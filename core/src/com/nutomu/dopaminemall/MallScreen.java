@@ -1,5 +1,6 @@
 package com.nutomu.dopaminemall;
 
+import com.badlogic.gdx.Application;
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.Input;
 import com.badlogic.gdx.InputProcessor;
@@ -63,8 +64,9 @@ import java.util.List;
  * - 起動時は端末の言語設定で自動判定し（日本語なら日本語、それ以外は英語）、
  *   タイトル画面で L キーを押すと切り替えられる。切り替えた言語は
  *   Preferences に保存され、次回起動時も維持される。
- * - 日本語表示のときは Noto Sans JP のサブセットフォントを gdx-freetype で
- *   読み込む。英語表示のときは従来のデフォルトフォントのまま。
+ * - 日本語表示のときは Noto Sans JP のサブセットから事前に生成した
+ *   ビットマップフォント（fonts/font32.fnt / font24.fnt）を読み込む。
+ *   英語表示のときは従来のデフォルトフォントのまま。
  * - タイトル画面とゲームオーバー画面の文字は中央揃えで描く（日本語でも崩れない）。
  * M6：音楽・演出・グラフィックスのテスト実装。
  * - BGM：生成チップチューンの WAV ループを3曲（タイトル／ダンジョン／ボス）。
@@ -301,6 +303,15 @@ public class MallScreen implements Screen, InputProcessor {
         Gdx.input.setInputProcessor(this);
         // Fire TV リモコンの Back ボタンを OS に取られずアプリで受け取る。
         Gdx.input.setCatchKey(Input.Keys.BACK, true);
+        // Web（HTML5）では矢印キーやスペースがブラウザに取られてページが
+        // スクロールするため、ゲームで使うキーをブラウザに渡さない。
+        if (Gdx.app.getType() == Application.ApplicationType.WebGL) {
+            Gdx.input.setCatchKey(Input.Keys.LEFT, true);
+            Gdx.input.setCatchKey(Input.Keys.RIGHT, true);
+            Gdx.input.setCatchKey(Input.Keys.UP, true);
+            Gdx.input.setCatchKey(Input.Keys.DOWN, true);
+            Gdx.input.setCatchKey(Input.Keys.SPACE, true);
+        }
     }
 
     /** 新しい階のフロアを生成してプレイヤーと敵・アイテムを配置する。 */
@@ -1398,6 +1409,13 @@ public class MallScreen implements Screen, InputProcessor {
      * 武器使用はゲーム内の攻撃アニメーション（突進＋斬撃＋フラッシュ）を
      * その向きで再生して表示する。各セルの下に実寸（幅×高さ）とフレーム数を出す。
      * 左右キーで種別を切り替える。B／Back／Esc／F1 でタイトル画面に戻る。 */
+    /** 小数を小数第2位まで表示する（String.format は GWT 非対応のため自前で整形）。 */
+    private static String fmt2(float v) {
+        boolean neg = v < 0;
+        int n = Math.round(Math.abs(v) * 100f);
+        return (neg ? "-" : "") + (n / 100) + "." + (n % 100 < 10 ? "0" : "") + (n % 100);
+    }
+
     private void drawSpriteDebug(float delta) {
         debugTime += delta;
         float cx = camera.position.x;
@@ -1431,7 +1449,7 @@ public class MallScreen implements Screen, InputProcessor {
         for (int d = 0; d < 8; d++) {
             String name = debugSpriteName(d, 0, 0);
             Sprites.Norm n = sprites.normOf(name);
-            scales.append(" ").append(n != null ? String.format("%.2f", n.scale) : "-");
+            scales.append(" ").append(n != null ? fmt2(n.scale) : "-");
         }
         hudFont.setColor(Color.LIGHT_GRAY);
         drawCentered(hudFont, scales.toString(), cx, cy + 288);

@@ -221,11 +221,37 @@ public final class Localization {
         if (args == null || args.length == 0) {
             return pattern;
         }
-        try {
-            return String.format(Locale.ROOT, pattern, args);
-        } catch (Exception e) {
-            return pattern;
+        return format(pattern, args);
+    }
+
+    /**
+     * GWT 互換の簡易フォーマッタ：%s・%d を順に置換する。
+     * String.format は GWT（HTML5）で使えないため、自前で置換する。
+     * ゲーム内の書式指定子は %s と %d だけ。%% は % になる。
+     * 引数が足りない指定子はそのまま残す（例外を投げない）。
+     */
+    private static String format(String pattern, Object... args) {
+        StringBuilder sb = new StringBuilder(pattern.length() + 16);
+        int arg = 0;
+        for (int i = 0; i < pattern.length(); i++) {
+            char c = pattern.charAt(i);
+            if (c == '%' && i + 1 < pattern.length()) {
+                char next = pattern.charAt(i + 1);
+                if (next == '%') {
+                    sb.append('%');
+                    i++;
+                    continue;
+                }
+                if ((next == 's' || next == 'd') && arg < args.length) {
+                    Object a = args[arg++];
+                    sb.append(a == null ? "null" : a.toString());
+                    i++;
+                    continue;
+                }
+            }
+            sb.append(c);
         }
+        return sb.toString();
     }
 
     /** 翻訳テーブル内のすべての日本語文字列を返す（フォントの文字収集用）。 */
