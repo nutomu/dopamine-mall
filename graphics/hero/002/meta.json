@@ -1,0 +1,26 @@
+{
+  "id": "hero-002",
+  "character": "hero",
+  "style": "フラットアニメ調",
+  "iou": 0.776,
+  "colors": 39,
+  "qa_ok": true,
+  "qa_errors": [],
+  "qa_warnings": [
+    "review.keep.earphones: hidden in idle/ne frame(s) [4] (it shows in the others): raise or turn it there, or cheat per direction with `yaw`",
+    "review.keep.earphones: hidden in idle/nw frame(s) [4] (it shows in the others): raise or turn it there, or cheat per direction with `yaw`",
+    "review.keep.earphones: idle below 3 px in n (0), ne (2), nw (2)",
+    "review.keep.earphones: walk below 3 px in n (0)"
+  ],
+  "source_dir": "spritekiln-v2-flat",
+  "date": "2026-11-27",
+  "status": "候補",
+  "notes": "v2とほぼ同じ見た目。スプラッシュの平たさはレンダラーに引き継がれず、パレットもv2とほぼ同一。",
+  "files": [
+    "splash.webp",
+    "atlas.png",
+    "atlas.json",
+    "meta.json",
+    "contact.png"
+  ]
+}

@@ -1,0 +1,24 @@
+{
+  "id": "hero-001",
+  "character": "hero",
+  "style": "スプラッシュアート方式 v2（v3マスター）",
+  "iou": 0.75,
+  "colors": 38,
+  "qa_ok": true,
+  "qa_errors": [],
+  "qa_warnings": [
+    "review.keep.earphones: idle below 3 px in n (0), ne (2), nw (2)",
+    "review.keep.earphones: walk below 3 px in n (0)"
+  ],
+  "source_dir": "spritekiln-v2",
+  "date": "2026-11-27",
+  "status": "候補",
+  "notes": "姿勢・シルエットは良好だが「昔のポリゴンみたい」との指摘で不採用。スプラッシュはv3マスターのSポーズ切り出し。",
+  "files": [
+    "splash.webp",
+    "atlas.png",
+    "atlas.json",
+    "meta.json",
+    "contact.png"
+  ]
+}

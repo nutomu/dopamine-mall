@@ -1,0 +1,24 @@
+{
+  "id": "hero-003",
+  "character": "hero",
+  "style": "ちび・デフォルメ調",
+  "iou": 0.677,
+  "colors": 38,
+  "qa_ok": true,
+  "qa_errors": [],
+  "qa_warnings": [
+    "review.keep.earphones: hidden in idle/n frame(s) [1, 2, 3] (it shows in the others): raise or turn it there, or cheat per direction with `yaw`",
+    "review.keep.earphones: idle below 3 px in n (1)"
+  ],
+  "source_dir": "spritekiln-v2-chibi",
+  "date": "2026-11-27",
+  "status": "候補",
+  "notes": "頭約43%のSDキャラ。4つの中で一番ちゃんとしたゲームキャラに見えるが、陰影は柔らかいグラデーションのまま。歩行時の頭の上下動が大きい。",
+  "files": [
+    "splash.webp",
+    "atlas.png",
+    "atlas.json",
+    "meta.json",
+    "contact.png"
+  ]
+}

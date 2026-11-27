@@ -1,0 +1,83 @@
+{
+  "version": 1,
+  "current": {
+    "hero": "hero-004"
+  },
+  "characters": {
+    "hero": {
+      "name": "主人公（ドパガキ）",
+      "entries": [
+        {
+          "id": "hero-001",
+          "character": "hero",
+          "style": "スプラッシュアート方式 v2（v3マスター）",
+          "splash": "graphics/hero/001/splash.webp",
+          "atlas": "graphics/hero/001/atlas.png",
+          "atlas_json": "graphics/hero/001/atlas.json",
+          "contact": "graphics/hero/001/contact.png",
+          "meta": "graphics/hero/001/meta.json",
+          "iou": 0.75,
+          "colors": 38,
+          "status": "候補",
+          "notes": "姿勢・シルエットは良好だが「昔のポリゴンみたい」との指摘で不採用。スプラッシュはv3マスターのSポーズ切り出し。"
+        },
+        {
+          "id": "hero-002",
+          "character": "hero",
+          "style": "フラットアニメ調",
+          "splash": "graphics/hero/002/splash.webp",
+          "atlas": "graphics/hero/002/atlas.png",
+          "atlas_json": "graphics/hero/002/atlas.json",
+          "contact": "graphics/hero/002/contact.png",
+          "meta": "graphics/hero/002/meta.json",
+          "iou": 0.776,
+          "colors": 39,
+          "status": "候補",
+          "notes": "v2とほぼ同じ見た目。スプラッシュの平たさはレンダラーに引き継がれず、パレットもv2とほぼ同一。"
+        },
+        {
+          "id": "hero-003",
+          "character": "hero",
+          "style": "ちび・デフォルメ調",
+          "splash": "graphics/hero/003/splash.webp",
+          "atlas": "graphics/hero/003/atlas.png",
+          "atlas_json": "graphics/hero/003/atlas.json",
+          "contact": "graphics/hero/003/contact.png",
+          "meta": "graphics/hero/003/meta.json",
+          "iou": 0.677,
+          "colors": 38,
+          "status": "候補",
+          "notes": "頭約43%のSDキャラ。4つの中で一番ちゃんとしたゲームキャラに見えるが、陰影は柔らかいグラデーションのまま。歩行時の頭の上下動が大きい。"
+        },
+        {
+          "id": "hero-004",
+          "character": "hero",
+          "style": "レトロピクセルアート調",
+          "splash": "graphics/hero/004/splash.webp",
+          "atlas": "graphics/hero/004/atlas.png",
+          "atlas_json": "graphics/hero/004/atlas.json",
+          "contact": "graphics/hero/004/contact.png",
+          "meta": "graphics/hero/004/meta.json",
+          "iou": 0.785,
+          "colors": 21,
+          "status": "採用",
+          "notes": "にゅーいちが「視認した感じ一番いい」と選び採用。色が一番フラットで硬い（ランプを3段に短縮）。"
+        },
+        {
+          "id": "hero-005",
+          "character": "hero",
+          "style": "コミック調",
+          "splash": "graphics/hero/005/splash.webp",
+          "atlas": "graphics/hero/005/atlas.png",
+          "atlas_json": "graphics/hero/005/atlas.json",
+          "contact": "graphics/hero/005/contact.png",
+          "meta": "graphics/hero/005/meta.json",
+          "iou": 0.73,
+          "colors": 39,
+          "status": "候補",
+          "notes": "最も太く大胆で鮮やか。4つの中で一番ピクセルアート寄りとの評価もある。原画の足元に黒い地面影の筋あり。"
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "id": "hero-005",
+  "character": "hero",
+  "style": "コミック調",
+  "iou": 0.73,
+  "colors": 39,
+  "qa_ok": true,
+  "qa_errors": [],
+  "qa_warnings": [
+    "review.keep.earphones: idle below 3 px in n (0)",
+    "review.keep.earphones: walk below 3 px in n (0)"
+  ],
+  "source_dir": "spritekiln-v2-comic",
+  "date": "2026-11-27",
+  "status": "候補",
+  "notes": "最も太く大胆で鮮やか。4つの中で一番ピクセルアート寄りとの評価もある。原画の足元に黒い地面影の筋あり。",
+  "files": [
+    "splash.webp",
+    "atlas.png",
+    "atlas.json",
+    "meta.json",
+    "contact.png"
+  ]
+}
