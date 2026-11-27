@@ -3,8 +3,8 @@
 品質ゲート用シートを作る。足シートを先に、フレーム単位で目視確認する。
 
 使い方: python3 tools/check_hero_gate.py
-出力先: samples/gate/hero4_contact.png（8方向×待機＋歩行4コマ）
-        samples/gate/hero4_feet2x.png（下部45%を2倍に拡大した足シート）
+出力先: samples/gate/hero_contact.png（8方向×待機＋歩行4コマ）
+        samples/gate/hero_feet2x.png（下部45%を2倍に拡大した足シート）
 
 ゲート（docs/ASSET_PIPELINE.md の品質ゲートと同じ）:
 - f0/f2 で逆の足、f1/f3 は足を閉じたパッシング
@@ -51,8 +51,8 @@ def contact():
             sheet.paste(im, (x, y), im)
             d.text((ci * cell_w + 8, ri * cell_h + cell_h - 24), col,
                    fill=(200, 200, 200), font=FONT_S)
-    sheet.save(os.path.join(OUT_DIR, "hero4_contact.png"))
-    print("wrote hero4_contact.png", sheet.size)
+    sheet.save(os.path.join(OUT_DIR, "hero_contact.png"))
+    print("wrote hero_contact.png", sheet.size)
 
 
 def feet():
@@ -74,8 +74,8 @@ def feet():
             sheet.paste(crop, (x, y), crop)
             d.text((ci * cell_w + 8, ri * cell_h + cell_h - 24), col,
                    fill=(200, 200, 200), font=FONT_S)
-    sheet.save(os.path.join(OUT_DIR, "hero4_feet2x.png"))
-    print("wrote hero4_feet2x.png", sheet.size)
+    sheet.save(os.path.join(OUT_DIR, "hero_feet2x.png"))
+    print("wrote hero_feet2x.png", sheet.size)
 
 
 def main():

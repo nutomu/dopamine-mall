@@ -1,5 +1,5 @@
 {
-  "id": "hero-003",
+  "id": "experiment-chibi",
   "character": "hero",
   "style": "ちび・デフォルメ調",
   "iou": 0.677,
@@ -12,13 +12,15 @@
   ],
   "source_dir": "spritekiln-v2-chibi",
   "date": "2026-11-27",
-  "status": "候補",
-  "notes": "頭約43%のSDキャラ。4つの中で一番ちゃんとしたゲームキャラに見えるが、陰影は柔らかいグラデーションのまま。歩行時の頭の上下動が大きい。",
+  "status": "記録",
+  "notes": "頭約43%のSDキャラ。4つの中で一番ちゃんとしたゲームキャラに見えるが、陰影は柔らかいグラデーションのまま。歩行時の頭の上下動が大きい。heroのバリエーションではない。ゲーム画風 v1 決定前の画風選びの記録。",
   "files": [
     "splash.webp",
     "atlas.png",
     "atlas.json",
     "meta.json",
     "contact.png"
-  ]
+  ],
+  "kind": "style-experiment",
+  "style_version": 0
 }

@@ -1,24 +1,25 @@
 {
   "id": "hero-001",
   "character": "hero",
-  "style": "スプラッシュアート方式 v2（v3マスター）",
-  "iou": 0.75,
-  "colors": 38,
+  "style": "レトロピクセルアート調",
+  "iou": 0.785,
+  "colors": 21,
   "qa_ok": true,
   "qa_errors": [],
   "qa_warnings": [
     "review.keep.earphones: idle below 3 px in n (0), ne (2), nw (2)",
     "review.keep.earphones: walk below 3 px in n (0)"
   ],
-  "source_dir": "spritekiln-v2",
+  "source_dir": "spritekiln-v2-pixel",
   "date": "2026-11-27",
-  "status": "候補",
-  "notes": "姿勢・シルエットは良好だが「昔のポリゴンみたい」との指摘で不採用。スプラッシュはv3マスターのSポーズ切り出し。",
+  "status": "採用",
+  "notes": "最初のデザイン。オレンジのパーカー、光るスマホ左手、エナジードリンク缶右手。にゅーいちが4バリアントを見比べて「視認した感じ一番いい」と選び、ゲーム全体の画風としてレトロピクセルアート調（v1）を採用（2026-11-27）。",
   "files": [
     "splash.webp",
     "atlas.png",
     "atlas.json",
     "meta.json",
     "contact.png"
-  ]
+  ],
+  "style_version": 1
 }

@@ -1,5 +1,5 @@
 {
-  "id": "hero-005",
+  "id": "experiment-comic",
   "character": "hero",
   "style": "コミック調",
   "iou": 0.73,
@@ -12,13 +12,15 @@
   ],
   "source_dir": "spritekiln-v2-comic",
   "date": "2026-11-27",
-  "status": "候補",
-  "notes": "最も太く大胆で鮮やか。4つの中で一番ピクセルアート寄りとの評価もある。原画の足元に黒い地面影の筋あり。",
+  "status": "記録",
+  "notes": "最も太く大胆で鮮やか。4つの中で一番ピクセルアート寄りとの評価もある。原画の足元に黒い地面影の筋あり。heroのバリエーションではない。ゲーム画風 v1 決定前の画風選びの記録。",
   "files": [
     "splash.webp",
     "atlas.png",
     "atlas.json",
     "meta.json",
     "contact.png"
-  ]
+  ],
+  "kind": "style-experiment",
+  "style_version": 0
 }

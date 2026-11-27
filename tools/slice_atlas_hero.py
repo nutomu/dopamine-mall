@@ -3,7 +3,7 @@
 ゲーム用に切り出すスクリプト。
 
 使い方: python3 tools/slice_atlas_hero.py [アトラスPNG] [アトラスJSON]
-既定はレトロピクセルアート調 hero-004 のアトラス。
+既定は hero-001（レトロピクセルアート調）のアトラス。
 出力先: android/assets/sprites2d/hero_d<向き>_f<フレーム>.png（歩行4コマ）
         android/assets/sprites2d/hero_d<向き>_idle.png（静止）
 

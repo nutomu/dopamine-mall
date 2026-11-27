@@ -1,5 +1,5 @@
 {
-  "id": "hero-002",
+  "id": "experiment-flat",
   "character": "hero",
   "style": "フラットアニメ調",
   "iou": 0.776,
@@ -14,13 +14,15 @@
   ],
   "source_dir": "spritekiln-v2-flat",
   "date": "2026-11-27",
-  "status": "候補",
-  "notes": "v2とほぼ同じ見た目。スプラッシュの平たさはレンダラーに引き継がれず、パレットもv2とほぼ同一。",
+  "status": "記録",
+  "notes": "v2とほぼ同じ見た目。スプラッシュの平たさはレンダラーに引き継がれず、パレットもv2とほぼ同一。heroのバリエーションではない。ゲーム画風 v1 決定前の画風選びの記録。",
   "files": [
     "splash.webp",
     "atlas.png",
     "atlas.json",
     "meta.json",
     "contact.png"
-  ]
+  ],
+  "kind": "style-experiment",
+  "style_version": 0
 }
