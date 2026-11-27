@@ -1,1 +1,57 @@
-{"characters":{"hero":{"entries":[{"atlas":"graphics/hero/001/atlas.png","atlas_json":"graphics/hero/001/atlas.json","character":"hero","colors":21,"contact":"graphics/hero/001/contact.png","id":"hero-001","iou":0.785,"manual_image":"graphics/hero/001/manual.webp","meta":"graphics/hero/001/meta.json","notes":"最初のデザイン。オレンジのパーカー、光るスマホ左手、エナジードリンク缶右手。","splash":"graphics/hero/001/splash.png","splash_colors":12,"splash_size":"128x256","status":"採用","style":"レトロピクセルアート調","style_version":1},{"atlas":"graphics/hero/002/atlas.png","atlas_json":"graphics/hero/002/atlas.json","character":"hero","colors":27,"contact":"graphics/hero/002/contact.png","id":"hero-002","iou":0.748,"manual_image":"graphics/hero/002/manual.webp","meta":"graphics/hero/002/meta.json","notes":"2番目のデザイン。女の子。ミントのトラックジャケット、ラベンダーの高ポニーテール＋星ピン、ピンクスニーカー、左手に携帯ゲーム機、右手にタピオカ。","splash":"graphics/hero/002/splash.png","splash_colors":11,"splash_size":"128x256","status":"候補","style":"レトロピクセルアート調","style_version":1}],"name":"主人公（ドパガキ）"}},"current":{"hero":"hero-001"},"structure":"3-image","structure_note":"キャラクター・モンスターごとに3つの画像を持つ。manual_image（説明書・パッケージ画像、512x512／512x1024／1024x1024位の高解像。ゲーム内では使わず、説明書や紹介サイトで使う）、splash（本物の低解像度ドット絵 128x128／128x256／256x256 レベル。ゲーム内のステータス・図鑑表示で使う立ち絵）、atlas（8方向、歩行・攻撃アニメーション用スプライトのアトラス）。2026-11-27ににゅーいちが決定。","style":{"decided":"2026-11-27","name":"レトロピクセルアート調","note":"ゲーム全体の画風。キャラクターごとではなく全体に適用し、統一感を持たせる。あとで調整することもある。その場合は最悪グラフィックスは全部再生成になる。各パターン／アセットに画風のバージョンを記録して、再生成のときに追跡できるようにする。","version":1},"version":2}
+{
+ "characters": {
+  "hero": {
+   "entries": [
+    {
+     "atlas": "graphics/hero/001/atlas.png",
+     "atlas_json": "graphics/hero/001/atlas.json",
+     "character": "hero",
+     "colors": 21,
+     "contact": "graphics/hero/001/contact.png",
+     "id": "hero-001",
+     "iou": 0.785,
+     "manual_image": "graphics/hero/001/manual.webp",
+     "meta": "graphics/hero/001/meta.json",
+     "notes": "最初のデザイン。オレンジのパーカー、光るスマホ左手、エナジードリンク缶右手。【2026-11-27 採用交代】にゅーいちの決定で hero-002 を主人公に採用。hero-001 は旧採用として残す（graphics/hero/001/ はそのまま）。ゲーム内のスプライトとスプラッシュは hero-002 に置き換え済み。",
+     "splash": "graphics/hero/001/splash.png",
+     "splash_colors": 12,
+     "splash_size": "128x256",
+     "status": "旧採用",
+     "style": "レトロピクセルアート調",
+     "style_version": 1
+    },
+    {
+     "atlas": "graphics/hero/002/atlas.png",
+     "atlas_json": "graphics/hero/002/atlas.json",
+     "character": "hero",
+     "colors": 27,
+     "contact": "graphics/hero/002/contact.png",
+     "id": "hero-002",
+     "iou": 0.724,
+     "manual_image": "graphics/hero/002/manual.webp",
+     "meta": "graphics/hero/002/meta.json",
+     "notes": "2番目のデザイン。女の子。ミントのトラックジャケット、ラベンダーの高ポニーテール＋星ピン、ピンクスニーカー、左手に携帯ゲーム機、右手にタピオカ。【2026-11-27 採用】にゅーいちの決定で主人公に採用。hero-001 と差し替え、ゲームに組み込み済み（スプライト40枚＋スプラッシュ128x256・11色）。最終切り出しファイルで歩行ゲート不良セル0（足シートを先に目視）。方向ごとの倍率 0.985〜1.045。",
+     "splash": "graphics/hero/002/splash.png",
+     "splash_colors": 11,
+     "splash_size": "128x256",
+     "status": "採用",
+     "style": "レトロピクセルアート調",
+     "style_version": 1
+    }
+   ],
+   "name": "主人公（ドパガキ）"
+  }
+ },
+ "current": {
+  "hero": "hero-002"
+ },
+ "structure": "3-image",
+ "structure_note": "キャラクター・モンスターごとに3つの画像を持つ。manual_image（説明書・パッケージ画像、512x512／512x1024／1024x1024位の高解像。ゲーム内では使わず、説明書や紹介サイトで使う）、splash（本物の低解像度ドット絵 128x128／128x256／256x256 レベル。ゲーム内のステータス・図鑑表示で使う立ち絵）、atlas（8方向、歩行・攻撃アニメーション用スプライトのアトラス）。2026-11-27ににゅーいちが決定。",
+ "style": {
+  "decided": "2026-11-27",
+  "name": "レトロピクセルアート調",
+  "note": "ゲーム全体の画風。キャラクターごとではなく全体に適用し、統一感を持たせる。あとで調整することもある。その場合は最悪グラフィックスは全部再生成になる。各パターン／アセットに画風のバージョンを記録して、再生成のときに追跡できるようにする。",
+  "version": 1
+ },
+ "version": 2
+}

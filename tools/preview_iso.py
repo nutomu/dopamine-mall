@@ -20,7 +20,9 @@ W, H = 1280, 720
 BASE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SPRITES = os.path.join(BASE, "android", "assets", "sprites2d")
 OUT_DIR = os.path.join(BASE, "samples", "preview25d")
-FONT_PATH = "/tmp/NotoSansJP-Regular.ttf"
+# ゲームに同梱のサブセットフォントを優先（/tmp のフォントはVM置換で消える）。
+FONT_PATH = os.path.join(BASE, "android", "assets", "fonts",
+                         "NotoSansJP-subset.ttf")
 
 NORM = {}
 try:
