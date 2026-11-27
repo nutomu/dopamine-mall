@@ -9,13 +9,15 @@
   はみ出す（自分のマス＝前面・赤レンガ、北のマス＝上面・薄茶タイル）。
 - 家具・キャラクターは足元中心から北へ高さ分だけ描く。
 
-壁モード：
-- current：現状のゲーム通り、北のマスが何であってもはみ出す。
-- fixed：北のマスが壁（または範囲外）のときだけはみ出す。
-  北のマスが床・家具などのときは前面（64px）だけ描く。
+壁の上面を描く条件（ゲーム本体の drawWall と同じ。preview_iso.wall_is_tall）：
+- 北が壁（y==0 の北端を含む）か、北が開けた床のときは背の高いチップ。
+- 北が家具・階段などの地形文字のときは前面だけ（家具・階段を隠さない）。
+- 北が通路（出入口の隙間や1マス幅の通路）のときも前面だけ（出入口を隠さない）。
+- アクター文字はゲームでは床タイルの上に立つものとして扱う
+  （壁の北側に立つキャラの下半身が壁に隠れる、というゲームと同じ前後関係）。
 
 使い方: python3 tools/preview_repro.py
-出力: samples/preview25d/repro_<scene>_<mode>.png
+出力: samples/preview25d/repro_<scene>.png
 """
 import os
 import sys
@@ -24,7 +26,8 @@ from PIL import Image, ImageDraw, ImageFont
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from preview_iso import (ACTORS, FONT_PATH, NORM, SPRITES, TERRAIN, TILE,
-                         draw_anchored, draw_shadow, load, tile)
+                         draw_anchored, draw_shadow, draw_wall, load, tile,
+                         wall_is_tall)
 
 OUT_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
                        "samples", "preview25d")
@@ -38,29 +41,8 @@ def font(size):
         return ImageFont.load_default()
 
 
-def draw_wall_current(img, px, py):
-    """現状のゲーム：北のマスが何でもはみ出す。"""
-    wall = load("wall")
-    spr = wall.resize((TILE, WALL_H), Image.LANCZOS)
-    img.paste(spr, (px - TILE // 2, py - TILE // 2 - TILE), spr)
-
-
-def draw_wall_fixed(img, px, py, north_is_wall):
-    """修正案：北のマスが壁（または範囲外）のときだけはみ出す。
-    それ以外は前面（テクスチャ下半分）だけを自分のマスに描く。"""
-    wall = load("wall")
-    if north_is_wall:
-        spr = wall.resize((TILE, WALL_H), Image.LANCZOS)
-        img.paste(spr, (px - TILE // 2, py - TILE // 2 - TILE), spr)
-    else:
-        # 前面だけ（下半分）を 64x64 で自分のマスに描く
-        front = wall.crop((0, wall.height // 2, wall.width, wall.height))
-        spr = front.resize((TILE, TILE), Image.LANCZOS)
-        img.paste(spr, (px - TILE // 2, py - TILE // 2), spr)
-
-
-def render(layout, floor_tex_name, mode, label):
-    """レイアウトをゲーム忠実に描く。mode は current / fixed。
+def render(layout, floor_tex_name, label):
+    """レイアウトをゲーム忠実に描く。
     描画順はゲーム本体と同じ2パス（床先描き＋足元Yソート）。"""
     rows = len(layout)
     cols = len(layout[0])
@@ -71,9 +53,8 @@ def render(layout, floor_tex_name, mode, label):
     d = ImageDraw.Draw(img)
     f = font(22)
     d.text((16, 16), label, font=f, fill=(255, 255, 255))
-    d.text((16, 48), "北が上。壁のはみ出し：%s" % (
-        "常に北へ1マス" if mode == "current" else "北が壁のときだけ"),
-        font=font(18), fill=(180, 180, 180))
+    d.text((16, 48), "北が上。壁の上面：北が壁か開けた床のときだけ描く",
+           font=font(18), fill=(180, 180, 180))
     floor_tex = load(floor_tex_name)
     # (a) 床パス：壁以外の全タイルに床チップを描く
     for y in range(rows):
@@ -94,9 +75,8 @@ def render(layout, floor_tex_name, mode, label):
                 continue
             px, py = tile(x, y, ox, oy)
             if ch == "#":
-                north = layout[y - 1][x] if y > 0 else "#"
                 entries.append((py + TILE // 2, 1, px, seq,
-                                ("wall", px, py, north)))
+                                ("wall", px, py, wall_is_tall(layout, x, y))))
                 seq += 1
             elif ch in TERRAIN:
                 name, height = TERRAIN[ch]
@@ -113,11 +93,8 @@ def render(layout, floor_tex_name, mode, label):
     for _, _, _, _, draw in entries:
         kind = draw[0]
         if kind == "wall":
-            _, px, py, north = draw
-            if mode == "current":
-                draw_wall_current(img, px, py)
-            else:
-                draw_wall_fixed(img, px, py, north == "#")
+            _, px, py, tall = draw
+            draw_wall(img, px, py, tall)
         elif kind == "terrain":
             _, name, px, py, height = draw
             draw_anchored(img, load(name), px, py, height)
@@ -136,6 +113,7 @@ def render(layout, floor_tex_name, mode, label):
 
 SCENES = {
     # 縦壁の出入口：壁の柱に1マスの隙間（床）。隙間の南に壁がある。
+    # 隙間の南の壁は通路判定（y-2が壁）で前面だけになり、隙間が床のまま見える。
     "vertical_door": [
         "..........",
         "....#.....",
@@ -168,11 +146,13 @@ SCENES = {
         "#........#",
         "##########",
     ],
-    # 家具のすぐ南に壁：テーブル・自販機・本棚の南隣が壁。
+    # 家具のすぐ南に壁：テーブル・本棚の南隣が壁。
+    # 家具の南の壁は前面だけになり、家具が隠れない。
+    # 開けた床の南の壁は上面（薄茶）が描かれる。
     "furniture_vs_wall": [
         "..........",
-        "..T..v....",
-        "..B......#",
+        "..T..B....",
+        "..######..",
         "..........",
         "..P..c....",
         "..........",
@@ -187,18 +167,61 @@ SCENES = {
         "#........#",
         "#####.####",
     ],
+    # 1マス厚の横壁（にゅーいちのスクリーンショット相当。北も南も床）。
+    # 壁の全長にわたって上面（薄茶）が赤レンガの上に描かれること。
+    "thin_wall": [
+        "############",
+        "#..........#",
+        "#..........#",
+        "#..######..#",
+        "#..........#",
+        "#..P...c...#",
+        "#..........#",
+        "############",
+    ],
+    # 南北の通路：横壁の隙間の真下に壁がある。
+    # 隙間の真下の壁は通路判定（東西が両方壁）で前面だけになり、
+    # 隙間が床のまま見える（通り抜けられる見た目）。
+    "ns_passage": [
+        "##########",
+        "#........#",
+        "####.#####",
+        "##########",
+        "#...P....#",
+        "##########",
+    ],
+    # 東西の通路：南北を壁に挟まれた1マス幅の床（テナントフロアの
+    # 最下段の帯に相当）。南の壁は通路判定（y-2が壁）で前面だけになり、
+    # 1マス幅の帯が床のまま見える。
+    "ew_passage": [
+        "##########",
+        "#........#",
+        "##########",
+        "#...P....#",
+        "##########",
+    ],
+    # 壁の北側に立つキャラ：主人公と客が横壁の北に立つ。
+    # 壁は上面を描き、北側のキャラの下半身が壁に隠れるのが正しい結果
+    # （壁が手前にあるため）。南側の店員は壁の手前にいて全身見える。
+    "wall_north_char": [
+        "............",
+        "............",
+        "...P....c...",
+        "..########..",
+        "............",
+        "....s.......",
+        "............",
+    ],
 }
 
 
 def main():
     os.makedirs(OUT_DIR, exist_ok=True)
     for name, layout in SCENES.items():
-        for mode in ("current", "fixed"):
-            label = "%s [%s]" % (name, mode)
-            img = render(layout, "floor_mall", mode, label)
-            out = os.path.join(OUT_DIR, "repro_%s_%s.png" % (name, mode))
-            img.convert("RGB").save(out)
-            print("wrote", out)
+        img = render(layout, "floor_mall", name)
+        out = os.path.join(OUT_DIR, "repro_%s.png" % name)
+        img.convert("RGB").save(out)
+        print("wrote", out)
 
 
 if __name__ == "__main__":

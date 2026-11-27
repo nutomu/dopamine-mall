@@ -127,6 +127,37 @@ ACTORS = {
 }
 
 
+def wall_is_tall(layout, x, y):
+    """壁チップを背の高いもの（上面＋前面）で描くかどうか。
+    ゲーム本体（MallScreen.drawWall）と同じ条件。
+    - 北が壁（y==0 の北端を含む）→ 背の高いチップ。
+    - 北が開けた床 → 背の高いチップ。
+    - 北が家具・階段などの地形文字 → 前面だけ（家具・階段を隠さない）。
+    - 北が通路（出入口の隙間や1マス幅の通路）→ 前面だけ（出入口を隠さない）。
+    通路とは、北の床が「東西を壁に挟まれた南北の通路」か
+    「南北を壁に挟まれた東西の通路」のこと。
+    アクター文字はゲームでは床タイルの上に立つものとして扱う
+    （壁の北側に立つキャラの下半身が壁に隠れる、というゲームと同じ
+    前後関係をプレビューでも再現するため。地形文字と重なる "S" は
+    draw_floor と同じく地形＝本棚として扱う）。
+    地形文字はゲームの家具・階段タイルにあたり、前面だけにする。"""
+    if y == 0:
+        return True
+    north = layout[y - 1][x]
+    if north == "#":
+        return True
+    if north in TERRAIN:
+        return False
+    if north != "." and north not in ACTORS:
+        return False
+    # 北は床（"." か、床の上に立つアクターの足元）
+    east_west_walls = (x > 0 and x < len(layout[0]) - 1
+                       and layout[y - 1][x - 1] == "#"
+                       and layout[y - 1][x + 1] == "#")
+    north_south_walls = y > 1 and layout[y - 2][x] == "#"
+    return not (east_west_walls or north_south_walls)
+
+
 def draw_floor(layout, floor_tex, ox, oy, img):
     """レイアウトを3/4見下ろし描画（床先描き＋足元Yソート）で描く。
     ゲーム本体（MallScreen.java）と同じ2パス構成。
@@ -158,10 +189,9 @@ def draw_floor(layout, floor_tex, ox, oy, img):
             px, py = tile(x, y, ox, oy)
             if ch == "#":
                 # 壁は背の高いチップで描く（床チップは敷かない。ゲーム本体と同じ）
-                # 北のマスが壁のときだけはみ出す（ゲーム本体の drawWall と同じ条件）
-                north_is_wall = y == 0 or layout[y - 1][x] == "#"
+                # 上面を描くかどうかは wall_is_tall（ゲーム本体の drawWall と同じ条件）
                 entries.append((py + TILE // 2, 1, px, seq,
-                                ("wall", px, py, north_is_wall)))
+                                ("wall", px, py, wall_is_tall(layout, x, y))))
                 seq += 1
             elif ch in TERRAIN:
                 name, height = TERRAIN[ch]

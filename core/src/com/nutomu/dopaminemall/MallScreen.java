@@ -1789,15 +1789,37 @@ public class MallScreen implements Screen, InputProcessor {
 
     /** 背の高い壁を描く（batch.begin() の中で呼ぶこと）。
      * 壁チップはタイルより背が高く（幅64×高さ128）、下端をタイルの下端に
-     * 合わせて上に1タイル分はみ出す。床は先に描き終わっているため、
-     * はみ出し部分が北隣の床の上に描かれても問題ない。
-     * ただし北のマスが壁でない（床・出入口・家具など）場合は、はみ出しを
-     * 描かない。はみ出し（壁の上面・薄茶タイル）は床のように見えるため、
-     * 北のマスが床だと出入口や床が隠れてしまう。北が壁のときだけ上面を
-     * 描くことで、壁の連なりは背の高い壁のまま残る。 */
+     * 合わせて上に1タイル分はみ出す。チップの上半分が壁の上面（薄茶タイル）、
+     * 下半分が壁の前面（赤レンガ）で、上面＋前面の2コマが1枚のチップに
+     * 入っている。3/4 view では「立つものは上面＋前面に分けて設計する」のが
+     * 共通の定石（Gridwright「3/4 View」、RPGツクールMZ A4壁チップ、
+     * research_notes/top-down-oblique-perspective-20261127-1629/report.md §3.2）。
+     * 1コマに圧縮する方式は低い胸壁・銃眼のような低い壁のもので、背の高い
+     * ダンジョンの壁には合わない。壁チップ64x128（前面64px＝1タイル分）は
+     * 定石のバランスに合致する。
+     * 床は先に描き終わっているため、はみ出し部分が北隣の床の上に描かれても
+     * 問題ない。上面を描くのは次の場合だけ：
+     * - 北隣が壁（y==0 のマップ北端を含む）。
+     * - 北隣が開けた床（通路でない）。
+     * 北隣が家具・階段などの地形タイルのときは前面だけを描き、家具・階段を
+     * 隠さない。北隣が通路（出入口の隙間や1マス幅の通路）のときも前面だけを
+     * 描き、出入口を隠さない。通路とは、北隣の床が「東西を壁に挟まれた
+     * 南北の通路」か「南北を壁に挟まれた東西の通路」のこと。
+     * 壁の北側に立つキャラの下半身が壁の上面に隠れるのは、壁が手前に
+     * あるための正しい結果（足元Yソートで壁がキャラより後に描かれる）。 */
     private void drawWall(float px, float py, int x, int y) {
-        boolean northIsWall = y > 0 && floor.tiles[x][y - 1] == Floor.Tile.WALL;
-        if (northIsWall) {
+        boolean northIsWall = y == 0 || floor.tiles[x][y - 1] == Floor.Tile.WALL;
+        boolean northIsFloor = y > 0 && floor.tiles[x][y - 1] == Floor.Tile.FLOOR;
+        boolean northIsPassage = false;
+        if (northIsFloor) {
+            boolean eastWestWalls = x > 0 && x < floor.w - 1
+                    && floor.tiles[x - 1][y - 1] == Floor.Tile.WALL
+                    && floor.tiles[x + 1][y - 1] == Floor.Tile.WALL;
+            boolean northSouthWalls = y > 1 && floor.tiles[x][y - 2] == Floor.Tile.WALL;
+            northIsPassage = eastWestWalls || northSouthWalls;
+        }
+        boolean drawTall = northIsWall || (northIsFloor && !northIsPassage);
+        if (drawTall) {
             batch.draw(sprites.wall, px - TILE / 2f, py - TILE / 2f, TILE, WALL_H);
         } else {
             // 前面（テクスチャの下半分・赤レンガ）だけを自分のマスに描く。
