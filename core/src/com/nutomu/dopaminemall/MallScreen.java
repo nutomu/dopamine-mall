@@ -1800,16 +1800,28 @@ public class MallScreen implements Screen, InputProcessor {
      * 床は先に描き終わっているため、はみ出し部分が北隣の床の上に描かれても
      * 問題ない。上面を描くのは次の場合だけ：
      * - 北隣が壁（y==0 のマップ北端を含む）。
+     * - 北隣が固体家具（SHELF/MACHINE/TABLE/COUNTER/STAGE/SEAT）。
+     *   壁は家具の手前（南）にあるため、上面が家具の下部を覆うのは
+     *   正しい隠れ方（2026-11-28、にゅーいちの指摘：家具に上面が
+     *   被るのは正しい表示。逆に家具の真北の壁が上面を描かないと、
+     *   その部分だけ床が見えて壁が紙のように薄く見える誤った表示になる）。
      * - 北隣が開けた床（通路でない）。
-     * 北隣が家具・階段などの地形タイルのときは前面だけを描き、家具・階段を
-     * 隠さない。北隣が通路（出入口の隙間や1マス幅の通路）のときも前面だけを
-     * 描き、出入口を隠さない。通路とは、北隣の床が「東西を壁に挟まれた
-     * 南北の通路」か「南北を壁に挟まれた東西の通路」のこと。
+     * 北隣が階段・エスカレーター（歩行可能な地形）のときは前面だけを描き、
+     * 階段を見えるままにする。階段は到達可能な床タイルならどこにでも
+     * 置かれる（FloorGenerator.placeStairs：隣接条件なし）ため、
+     * 壁の真北に来ることがある。北隣が通路（出入口の隙間や1マス幅の
+     * 通路）のときも前面だけを描き、出入口を隠さない。通路とは、北隣の
+     * 床が「東西を壁に挟まれた南北の通路」か「南北を壁に挟まれた東西の
+     * 通路」のこと。
      * 壁の北側に立つキャラの下半身が壁の上面に隠れるのは、壁が手前に
      * あるための正しい結果（足元Yソートで壁がキャラより後に描かれる）。 */
     private void drawWall(float px, float py, int x, int y) {
         boolean northIsWall = y == 0 || floor.tiles[x][y - 1] == Floor.Tile.WALL;
         boolean northIsFloor = y > 0 && floor.tiles[x][y - 1] == Floor.Tile.FLOOR;
+        // 北隣が固体家具（歩行不可・壁以外）なら上面も描く。階段・
+        // エスカレーターは歩行可能なためここには入らず、前面だけになる。
+        boolean northIsSolidTerrain = y > 0 && !floor.tiles[x][y - 1].isWalkable()
+                && floor.tiles[x][y - 1] != Floor.Tile.WALL;
         boolean northIsPassage = false;
         if (northIsFloor) {
             boolean eastWestWalls = x > 0 && x < floor.w - 1
@@ -1818,7 +1830,8 @@ public class MallScreen implements Screen, InputProcessor {
             boolean northSouthWalls = y > 1 && floor.tiles[x][y - 2] == Floor.Tile.WALL;
             northIsPassage = eastWestWalls || northSouthWalls;
         }
-        boolean drawTall = northIsWall || (northIsFloor && !northIsPassage);
+        boolean drawTall = northIsWall || northIsSolidTerrain
+                || (northIsFloor && !northIsPassage);
         if (drawTall) {
             batch.draw(sprites.wall, px - TILE / 2f, py - TILE / 2f, TILE, WALL_H);
         } else {
